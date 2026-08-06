@@ -6,7 +6,10 @@
 </head>
 <body>
   <div class="card">
-    <h1>ダッシュボード</h1>
+    <div class="page-header">
+      <h1>ダッシュボード</h1>
+      <button id="logoutBtn" class="secondary" type="button">ログアウト</button>
+    </div>
     <p id="welcome"></p>
     <ul class="nav-list">
       <li><a href="<?!= scriptUrl ?>?page=GF02">在庫一覧</a></li>
@@ -14,7 +17,6 @@
       <li class="pc-only"><a href="<?!= scriptUrl ?>?page=GF04">QRコード発行</a></li>
       <li class="pc-only"><a href="<?!= scriptUrl ?>?page=GF05">閾値設定</a></li>
     </ul>
-    <button id="logoutBtn" class="secondary">ログアウト</button>
   </div>
 
   <?!= include('frontend/js/session'); ?>

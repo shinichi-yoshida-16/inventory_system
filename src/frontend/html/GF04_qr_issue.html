@@ -10,15 +10,19 @@
   <style>
     #qrCode svg { max-width: 220px; }
     @media print {
-      .card > *:not(#qrResult) { display: none !important; }
+      body > *:not(#qrCard) { display: none !important; }
+      #qrCard > *:not(#qrResult) { display: none !important; }
       #qrResult { display: block !important; }
     }
   </style>
 </head>
 <body>
   <div class="card">
+    <div class="page-header">
+      <a href="<?!= scriptUrl ?>?page=GF01">&laquo; ダッシュボードへ戻る</a>
+      <button id="logoutBtn" class="secondary" type="button">ログアウト</button>
+    </div>
     <h1>QRコード発行</h1>
-    <p><a href="<?!= scriptUrl ?>?page=GF01">&laquo; ダッシュボードへ戻る</a></p>
 
     <label for="itemName">品目名</label>
     <input type="text" id="itemName">
@@ -30,6 +34,19 @@
     <input type="text" id="location">
 
     <button id="issueBtn">発行する</button>
+  </div>
+
+  <div class="card">
+    <h2>既存品目のQR再発行</h2>
+    <p style="font-size:0.85rem; color:#64748b;">
+      QRコードのラベルを紛失・破損した場合に、新規登録せず同じ品目IDでQRを再出力します。
+    </p>
+    <label for="reissueSelect">品目を選択</label>
+    <select id="reissueSelect"></select>
+    <button id="reissueBtn" class="secondary">再発行する</button>
+  </div>
+
+  <div class="card" id="qrCard">
     <div id="message" class="message"></div>
 
     <div id="qrResult" style="display:none; margin-top:16px; text-align:center;">
@@ -45,11 +62,48 @@
     var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
     var session = requireSession(scriptUrl + '?page=GF00');
 
+    document.getElementById('logoutBtn').addEventListener('click', function () {
+      clearSession();
+      window.top.location.href = scriptUrl + '?page=GF00';
+    });
+
     function setMessage(text, type) {
       var msg = document.getElementById('message');
       msg.className = 'message' + (type ? ' ' + type : '');
       msg.textContent = text;
     }
+
+    // 再発行プルダウンに既存品目(廃番除く)を読み込む。新規発行後にも呼び直して最新化する。
+    function loadReissueOptions() {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status !== 'OK') return;
+          var select = document.getElementById('reissueSelect');
+          var previousValue = select.value;
+          select.innerHTML = '';
+          res.data.items.forEach(function (item) {
+            var opt = document.createElement('option');
+            opt.value = item.itemId;
+            opt.textContent = item.itemId + ' - ' + item.itemName;
+            select.appendChild(opt);
+          });
+          if (previousValue) select.value = previousValue;
+        })
+        .withFailureHandler(function () {
+          setMessage('品目一覧の取得に失敗しました。', 'error');
+        })
+        .getInventoryList({ token: session.token });
+    }
+
+    document.getElementById('reissueBtn').addEventListener('click', function () {
+      var select = document.getElementById('reissueSelect');
+      setMessage('');
+      if (!select.value) {
+        setMessage('再発行する品目を選択してください。', 'error');
+        return;
+      }
+      showQr(select.value);
+    });
 
     document.getElementById('issueBtn').addEventListener('click', function () {
       var itemName = document.getElementById('itemName').value.trim();
@@ -74,6 +128,7 @@
           }
           setMessage(res.message, 'success');
           showQr(res.data.itemId);
+          loadReissueOptions();
         })
         .withFailureHandler(function () {
           btn.disabled = false;
@@ -94,6 +149,10 @@
     document.getElementById('printBtn').addEventListener('click', function () {
       window.print();
     });
+
+    if (session) {
+      loadReissueOptions();
+    }
   </script>
 </body>
 </html>

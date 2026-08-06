@@ -6,8 +6,11 @@
 </head>
 <body>
   <div class="card">
+    <div class="page-header">
+      <a href="<?!= scriptUrl ?>?page=GF01">&laquo; ダッシュボードへ戻る</a>
+      <button id="logoutBtn" class="secondary" type="button">ログアウト</button>
+    </div>
     <h1>閾値設定</h1>
-    <p><a href="<?!= scriptUrl ?>?page=GF01">&laquo; ダッシュボードへ戻る</a></p>
 
     <div id="message" class="message"></div>
 
@@ -36,6 +39,11 @@
     var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
     var session = requireSession(scriptUrl + '?page=GF00');
     var currentEmails = [];
+
+    document.getElementById('logoutBtn').addEventListener('click', function () {
+      clearSession();
+      window.top.location.href = scriptUrl + '?page=GF00';
+    });
 
     function setMessage(text, type) {
       var msg = document.getElementById('message');
