@@ -67,24 +67,34 @@ graph TB
 
 ### 2.2. フォルダ構成
 - inventory_system : プロジェクトルート
-  - core : バックエンド
-    - code.gs : doGet/doPost（API層）のみ。ルーティングに専念し処理本体は書かない
-    - auth.gs : login処理、トークン発行・検証（ロジック層）
-    - inventory.gs : 在庫増減、閾値判定（ロジック層）
-    - alert.gs : アラートメール送信（ロジック層）
-    - sheetDao.gs : 全シートへの読み書き関数群（データアクセス層）。他ファイルからはこの層経由でのみシートにアクセスする
-  - frontend : フロントエンド
-    - html
-      - GF00_login.html
-      - GF01_dashboard.html
-      - GF02_inventory_list.html
-      - GF04_qr_issue.html
-      - GF05_threshold_setting.html
-    - js
-    - css
-  - external : 外部ホスティング
-    - gf03-scan
-      - index.html : カメラ起動・QR読取・doPost呼び出しのみ。業務ロジックを持たない
+  - docs : ドキュメントフォルダ
+    - requestments : 要件定義
+      - requestment: 要件定義書
+      - technical_verification.md : 技術検証資料
+    - architecture : 設計書
+      - overview.md : 全体設計書
+      - sequence.md : シーケンス図
+      - database.md : データベース設計
+      - transition.md : 画面遷移設計
+  - src : ソースフォルダ
+    - core : バックエンド
+      - code.gs : doGet/doPost（API層）のみ。ルーティングに専念し処理本体は書かない
+      - auth.gs : login処理、トークン発行・検証（ロジック層）
+      - inventory.gs : 在庫増減、閾値判定（ロジック層）
+      - alert.gs : アラートメール送信（ロジック層）
+      - sheetDao.gs : 全シートへの読み書き関数群（データアクセス層）。他ファイルからはこの層経由でのみシートにアクセスする
+    - frontend : フロントエンド
+      - html
+        - GF00_login.html : ログイン画面
+        - GF01_dashboard.html : ダッシュボード
+        - GF02_inventory_list.html : 在庫一覧画面
+        - GF04_qr_issue.html : QR設定画面
+        - GF05_threshold_setting.html : 閾値設定画面
+      - js
+      - css
+    - external : 外部ホスティング
+      - gf03-scan
+        - index.html : カメラ起動・QR読取・doPost呼び出しのみ。業務ロジックを持たない
 
 - 命名規則
   - ロジック層の内部専用関数（他ファイルから呼ばれない想定）は末尾に _ を付与する（GAS標準の可視性慣習）。例: findRowById_()
