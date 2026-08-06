@@ -1,0 +1,43 @@
+name: Deploy GF-03 scan page to GitHub Pages
+
+# src/external/gf03-scan(GAS本体とは別ドメインで公開する外部無償ホスティング分)のみを
+# GitHub Pagesへ公開する。docs/(設計書)やsrc/core(GAS本体)は公開対象に含めない。
+# 参照: docs/architecture/overview.md 3章, docs/requirements/technical_verification.md
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/external/gf03-scan/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload gf03-scan as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: src/external/gf03-scan
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
