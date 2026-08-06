@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('frontend/css/style'); ?>
+</head>
+<body>
+  <div class="card">
+    <h1>閾値設定</h1>
+    <p><a href="<?!= scriptUrl ?>?page=GF01">&laquo; ダッシュボードへ戻る</a></p>
+
+    <div id="message" class="message"></div>
+
+    <table>
+      <thead>
+        <tr><th>品目ID</th><th>品目名</th><th>現在在庫数</th><th>閾値</th><th></th></tr>
+      </thead>
+      <tbody id="thresholdTableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>アラート通知先メールアドレス</h2>
+    <p style="font-size:0.85rem;color:#64748b;">
+      ここに登録した全アドレスへ、いずれかの品目が閾値を下回った際に一律通知されます(品目ごとの紐付けはありません)。
+    </p>
+    <div id="emailList"></div>
+    <label for="newEmail">追加するメールアドレス</label>
+    <input type="email" id="newEmail">
+    <button id="addEmailBtn" class="secondary">追加</button>
+    <button id="saveEmailsBtn">保存</button>
+  </div>
+
+  <?!= include('frontend/js/session'); ?>
+  <script>
+    var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
+    var session = requireSession(scriptUrl + '?page=GF00');
+    var currentEmails = [];
+
+    function setMessage(text, type) {
+      var msg = document.getElementById('message');
+      msg.className = 'message' + (type ? ' ' + type : '');
+      msg.textContent = text;
+    }
+
+    function loadItems() {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status !== 'OK') return setMessage(res.message, 'error');
+          renderItems(res.data.items);
+        })
+        .withFailureHandler(function () {
+          setMessage('在庫一覧の取得に失敗しました。', 'error');
+        })
+        .getInventoryList({ token: session.token });
+    }
+
+    function renderItems(items) {
+      var tbody = document.getElementById('thresholdTableBody');
+      tbody.innerHTML = '';
+      items.forEach(function (item) {
+        var tr = document.createElement('tr');
+
+        var idTd = document.createElement('td');
+        idTd.textContent = item.itemId;
+        var nameTd = document.createElement('td');
+        nameTd.textContent = item.itemName;
+        var stockTd = document.createElement('td');
+        stockTd.textContent = item.currentStock;
+
+        var thresholdTd = document.createElement('td');
+        var input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.value = item.threshold;
+        input.style.width = '80px';
+        thresholdTd.appendChild(input);
+
+        var actionTd = document.createElement('td');
+        var btn = document.createElement('button');
+        btn.textContent = '更新';
+        btn.addEventListener('click', function () {
+          updateThreshold(item.itemId, Number(input.value));
+        });
+        actionTd.appendChild(btn);
+
+        tr.appendChild(idTd);
+        tr.appendChild(nameTd);
+        tr.appendChild(stockTd);
+        tr.appendChild(thresholdTd);
+        tr.appendChild(actionTd);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateThreshold(itemId, threshold) {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status === 'OK') {
+            setMessage(res.message, 'success');
+          } else {
+            setMessage(res.message, 'error');
+          }
+        })
+        .withFailureHandler(function () {
+          setMessage('更新に失敗しました。', 'error');
+        })
+        .updateThreshold({ token: session.token, itemId: itemId, threshold: threshold });
+    }
+
+    function loadEmails() {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status !== 'OK') return setMessage(res.message, 'error');
+          currentEmails = res.data.emails;
+          renderEmails();
+        })
+        .withFailureHandler(function () {
+          setMessage('通知先の取得に失敗しました。', 'error');
+        })
+        .getNotificationTargets({ token: session.token });
+    }
+
+    function renderEmails() {
+      var container = document.getElementById('emailList');
+      container.innerHTML = '';
+      currentEmails.forEach(function (email, i) {
+        var row = document.createElement('div');
+        row.style.margin = '4px 0';
+
+        var span = document.createElement('span');
+        span.textContent = email;
+
+        var removeBtn = document.createElement('button');
+        removeBtn.className = 'secondary';
+        removeBtn.textContent = '削除';
+        removeBtn.style.marginLeft = '8px';
+        removeBtn.addEventListener('click', function () {
+          currentEmails.splice(i, 1);
+          renderEmails();
+        });
+
+        row.appendChild(span);
+        row.appendChild(removeBtn);
+        container.appendChild(row);
+      });
+    }
+
+    document.getElementById('addEmailBtn').addEventListener('click', function () {
+      var input = document.getElementById('newEmail');
+      var email = input.value.trim();
+      if (!email) return;
+      currentEmails.push(email);
+      input.value = '';
+      renderEmails();
+    });
+
+    document.getElementById('saveEmailsBtn').addEventListener('click', function () {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status === 'OK') {
+            setMessage('通知先を保存しました。', 'success');
+          } else {
+            setMessage(res.message, 'error');
+          }
+        })
+        .withFailureHandler(function () {
+          setMessage('保存に失敗しました。', 'error');
+        })
+        .updateThreshold({ token: session.token, notificationEmails: currentEmails });
+    });
+
+    if (session) {
+      loadItems();
+      loadEmails();
+    }
+  </script>
+</body>
+</html>

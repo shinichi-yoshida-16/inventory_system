@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('frontend/css/style'); ?>
+  <!-- QRコード生成: qrcode-generator(MIT, Kazuhiko Arase)をCDN経由で利用。
+       GF-04はPC専用画面でカメラ等の機微権限は不要のため、GAS HTML Serviceの
+       サンドボックス制約(technical_verification.md 検証結果1)の対象外。 -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+  <style>
+    #qrCode svg { max-width: 220px; }
+    @media print {
+      .card > *:not(#qrResult) { display: none !important; }
+      #qrResult { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>QRコード発行</h1>
+    <p><a href="<?!= scriptUrl ?>?page=GF01">&laquo; ダッシュボードへ戻る</a></p>
+
+    <label for="itemName">品目名</label>
+    <input type="text" id="itemName">
+
+    <label for="threshold">アラート閾値</label>
+    <input type="number" id="threshold" min="0" value="0">
+
+    <label for="location">保管場所(任意)</label>
+    <input type="text" id="location">
+
+    <button id="issueBtn">発行する</button>
+    <div id="message" class="message"></div>
+
+    <div id="qrResult" style="display:none; margin-top:16px; text-align:center;">
+      <p>品目ID: <strong id="qrItemId"></strong></p>
+      <div id="qrCode"></div>
+      <p style="font-size:0.85rem; color:#64748b;">QRコードを印刷し、対象の部品箱に貼付してください。</p>
+      <button id="printBtn" class="secondary">印刷</button>
+    </div>
+  </div>
+
+  <?!= include('frontend/js/session'); ?>
+  <script>
+    var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
+    var session = requireSession(scriptUrl + '?page=GF00');
+
+    function setMessage(text, type) {
+      var msg = document.getElementById('message');
+      msg.className = 'message' + (type ? ' ' + type : '');
+      msg.textContent = text;
+    }
+
+    document.getElementById('issueBtn').addEventListener('click', function () {
+      var itemName = document.getElementById('itemName').value.trim();
+      var threshold = Number(document.getElementById('threshold').value);
+      var location = document.getElementById('location').value.trim();
+      setMessage('');
+
+      if (!itemName) {
+        setMessage('品目名を入力してください。', 'error');
+        return;
+      }
+
+      var btn = document.getElementById('issueBtn');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          btn.disabled = false;
+          if (res.status !== 'OK') {
+            setMessage(res.message, 'error');
+            return;
+          }
+          setMessage(res.message, 'success');
+          showQr(res.data.itemId);
+        })
+        .withFailureHandler(function () {
+          btn.disabled = false;
+          setMessage('登録に失敗しました。時間をおいて再度お試しください。', 'error');
+        })
+        .issueQr({ token: session.token, itemName: itemName, threshold: threshold, location: location });
+    });
+
+    function showQr(itemId) {
+      document.getElementById('qrItemId').textContent = itemId;
+      var qr = qrcode(0, 'M');
+      qr.addData(itemId);
+      qr.make();
+      document.getElementById('qrCode').innerHTML = qr.createSvgTag(6, 0);
+      document.getElementById('qrResult').style.display = 'block';
+    }
+
+    document.getElementById('printBtn').addEventListener('click', function () {
+      window.print();
+    });
+  </script>
+</body>
+</html>

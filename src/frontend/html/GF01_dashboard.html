@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('frontend/css/style'); ?>
+</head>
+<body>
+  <div class="card">
+    <h1>ダッシュボード</h1>
+    <p id="welcome"></p>
+    <ul class="nav-list">
+      <li><a href="<?!= scriptUrl ?>?page=GF02">在庫一覧</a></li>
+      <li class="mobile-only"><a id="gf03Link" href="#">QRスキャン(入出庫)</a></li>
+      <li class="pc-only"><a href="<?!= scriptUrl ?>?page=GF04">QRコード発行</a></li>
+      <li class="pc-only"><a href="<?!= scriptUrl ?>?page=GF05">閾値設定</a></li>
+    </ul>
+    <button id="logoutBtn" class="secondary">ログアウト</button>
+  </div>
+
+  <?!= include('frontend/js/session'); ?>
+  <script>
+    var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
+    var gf03Url = <?!= JSON.stringify(gf03Url) ?>;
+
+    var session = requireSession(scriptUrl + '?page=GF00');
+
+    if (session) {
+      document.getElementById('welcome').textContent =
+        session.email + ' としてログイン中' + (session.isAdmin ? '(管理者)' : '');
+
+      var gf03Link = document.getElementById('gf03Link');
+      if (gf03Url) {
+        var returnUrl = encodeURIComponent(scriptUrl + '?page=GF01');
+        gf03Link.href = gf03Url + '?token=' + encodeURIComponent(session.token) + '&returnUrl=' + returnUrl;
+      } else {
+        gf03Link.textContent = 'QRスキャン(未設定: 管理者にお問い合わせください)';
+        gf03Link.removeAttribute('href');
+        gf03Link.style.opacity = '0.5';
+      }
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', function () {
+      clearSession();
+      window.top.location.href = scriptUrl + '?page=GF00';
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('frontend/css/style'); ?>
+</head>
+<body>
+  <div class="card">
+    <h1>在庫一覧</h1>
+    <p><a href="<?!= scriptUrl ?>?page=GF01">&laquo; ダッシュボードへ戻る</a></p>
+
+    <label id="showDiscontinuedLabel" style="display:none;">
+      <input type="checkbox" id="showDiscontinued"> 廃番品目も表示する
+    </label>
+
+    <div id="message" class="message"></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>品目ID</th>
+          <th>品目名</th>
+          <th>現在在庫数</th>
+          <th>閾値</th>
+          <th>保管場所</th>
+          <th id="adminHeader" style="display:none;">操作</th>
+        </tr>
+      </thead>
+      <tbody id="itemTableBody"></tbody>
+    </table>
+  </div>
+
+  <?!= include('frontend/js/session'); ?>
+  <script>
+    var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
+    var session = requireSession(scriptUrl + '?page=GF00');
+
+    function setMessage(text, type) {
+      var msg = document.getElementById('message');
+      msg.className = 'message' + (type ? ' ' + type : '');
+      msg.textContent = text;
+    }
+
+    function loadList(includeDiscontinued) {
+      setMessage('');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status !== 'OK') {
+            setMessage(res.message, 'error');
+            return;
+          }
+          renderItems(res.data.items);
+        })
+        .withFailureHandler(function () {
+          setMessage('在庫一覧の取得に失敗しました。', 'error');
+        })
+        .getInventoryList({ token: session.token, includeDiscontinued: !!includeDiscontinued });
+    }
+
+    function renderItems(items) {
+      var tbody = document.getElementById('itemTableBody');
+      tbody.innerHTML = '';
+      items.forEach(function (item) {
+        var tr = document.createElement('tr');
+        if (item.currentStock <= item.threshold) tr.className = 'alert';
+
+        [item.itemId, item.itemName, item.currentStock, item.threshold, item.location || ''].forEach(function (val) {
+          var td = document.createElement('td');
+          td.textContent = val;
+          tr.appendChild(td);
+        });
+
+        if (session.isAdmin) {
+          var actionTd = document.createElement('td');
+          var btn = document.createElement('button');
+          btn.className = item.discontinuedFlag ? 'secondary' : 'danger';
+          btn.textContent = item.discontinuedFlag ? '廃番解除' : '廃番にする';
+          btn.addEventListener('click', function () {
+            toggleDiscontinued(item.itemId, !item.discontinuedFlag);
+          });
+          actionTd.appendChild(btn);
+          if (item.discontinuedFlag) {
+            var badge = document.createElement('span');
+            badge.textContent = '(廃番)';
+            badge.style.marginLeft = '8px';
+            actionTd.appendChild(badge);
+          }
+          tr.appendChild(actionTd);
+        }
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function toggleDiscontinued(itemId, discontinued) {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (res.status === 'OK') {
+            loadList(document.getElementById('showDiscontinued').checked);
+          } else {
+            setMessage(res.message, 'error');
+          }
+        })
+        .withFailureHandler(function () {
+          setMessage('操作に失敗しました。', 'error');
+        })
+        .setDiscontinued({ token: session.token, itemId: itemId, discontinued: discontinued });
+    }
+
+    if (session) {
+      if (session.isAdmin) {
+        document.getElementById('adminHeader').style.display = '';
+        document.getElementById('showDiscontinuedLabel').style.display = 'block';
+        document.getElementById('showDiscontinued').addEventListener('change', function (e) {
+          loadList(e.target.checked);
+        });
+      }
+      loadList(false);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QRスキャン(入出庫登録)</title>
+<style>
+  :root {
+    --color-primary: #2563eb;
+    --color-danger: #dc2626;
+    --color-success: #16a34a;
+    --color-border: #e2e8f0;
+    --color-text: #1e293b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", Meiryo, sans-serif;
+    background: #f8fafc;
+    color: var(--color-text);
+    margin: 0;
+    padding: 16px;
+  }
+  h1 { font-size: 1.2rem; }
+  #video { width: 100%; max-width: 480px; border-radius: 8px; background: #000; display: block; margin: 0 auto; }
+  label { display: block; margin: 12px 0 4px; font-size: 0.9rem; }
+  input[type="number"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 1rem;
+  }
+  button {
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 12px 16px;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 12px;
+    margin-right: 8px;
+  }
+  button.secondary { background: #64748b; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .type-toggle { margin-top: 12px; }
+  .type-btn { background: #e2e8f0; color: var(--color-text); }
+  .type-btn.active { background: var(--color-primary); color: #fff; }
+  #errorMessage, #resultMessage { font-size: 0.95rem; }
+  #errorView h1 { color: var(--color-danger); }
+  #resultView h1 { color: var(--color-success); }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div id="scanView">
+      <h1>QRスキャン</h1>
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="canvas" style="display:none;"></canvas>
+      <p id="scanStatus">カメラを起動しています…</p>
+    </div>
+
+    <div id="confirmView" style="display:none;">
+      <h1>入出庫登録</h1>
+      <p>品目ID: <strong id="confirmItemId"></strong></p>
+      <p>品目名: <strong id="confirmItemName"></strong></p>
+      <p>現在在庫数: <strong id="confirmStock"></strong></p>
+      <div class="type-toggle">
+        <button id="typeInBtn" class="type-btn" type="button">入庫</button>
+        <button id="typeOutBtn" class="type-btn" type="button">出庫</button>
+      </div>
+      <label for="quantity">数量</label>
+      <input type="number" id="quantity" min="1" value="1">
+      <div>
+        <button id="submitBtn">登録する</button>
+        <button id="cancelBtn" class="secondary" type="button">スキャンに戻る</button>
+      </div>
+    </div>
+
+    <div id="resultView" style="display:none;">
+      <h1 id="resultTitle">登録完了</h1>
+      <p id="resultMessage"></p>
+      <button id="rescanBtn">続けてスキャンする</button>
+    </div>
+
+    <div id="errorView" style="display:none;">
+      <h1>エラー</h1>
+      <p id="errorMessage"></p>
+      <button id="retryBtn">再試行</button>
+      <button id="toLoginBtn" class="secondary" style="display:none;">ログイン画面へ</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script>
+    // ============================================================
+    // 設定: GASをWebアプリとしてデプロイした後、必ず以下を書き換えること。
+    // (architecture/overview.md 4.2, requirements/requestment.md 10章 参照)
+    // ============================================================
+    var GAS_WEB_APP_URL = 'REPLACE_WITH_DEPLOYED_GAS_WEB_APP_URL';
+    // ============================================================
+
+    var params = new URLSearchParams(window.location.search);
+    var token = params.get('token');
+    var returnUrl = params.get('returnUrl');
+
+    var els = {
+      video: document.getElementById('video'),
+      canvas: document.getElementById('canvas')
+    };
+
+    var scanning = false;
+    var currentItemId = null;
+    var currentType = 'OUT';
+
+    function showView(name) {
+      ['scanView', 'confirmView', 'resultView', 'errorView'].forEach(function (v) {
+        document.getElementById(v).style.display = v === name ? 'block' : 'none';
+      });
+    }
+
+    function showError(message, fatal) {
+      document.getElementById('errorMessage').textContent = message;
+      document.getElementById('toLoginBtn').style.display = fatal ? 'inline-block' : 'none';
+      showView('errorView');
+    }
+
+    function init() {
+      if (!token) {
+        showError('セッション情報が見つかりません。ダッシュボード画面から再度アクセスしてください。', true);
+        return;
+      }
+      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL.indexOf('REPLACE_WITH') === 0) {
+        showError('システム設定が未完了です(GAS_WEB_APP_URL未設定)。管理者にお問い合わせください。', false);
+        return;
+      }
+      startCamera();
+    }
+
+    function startCamera() {
+      showView('scanView');
+      document.getElementById('scanStatus').textContent = 'カメラを起動しています…';
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode: 'environment' } })
+        .then(function (stream) {
+          scanning = true;
+          els.video.srcObject = stream;
+          els.video.setAttribute('playsinline', true);
+          els.video.play();
+          document.getElementById('scanStatus').textContent = 'QRコードを枠内に写してください';
+          requestAnimationFrame(tick);
+        })
+        .catch(function () {
+          showError('カメラを起動できませんでした。ブラウザの設定でカメラの利用を許可してください。', false);
+        });
+    }
+
+    function stopCamera() {
+      scanning = false;
+      var stream = els.video.srcObject;
+      if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    }
+
+    function tick() {
+      if (!scanning) return;
+      if (els.video.readyState === els.video.HAVE_ENOUGH_DATA) {
+        var canvas = els.canvas;
+        canvas.width = els.video.videoWidth;
+        canvas.height = els.video.videoHeight;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(els.video, 0, 0, canvas.width, canvas.height);
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var code = jsQR(imageData.data, imageData.width, imageData.height);
+        if (code && code.data) {
+          onDecoded(code.data);
+          return;
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function onDecoded(itemId) {
+      stopCamera();
+      currentItemId = itemId;
+      callApi('getItemById', { itemId: itemId })
+        .then(function (res) {
+          if (res.status !== 'OK') return handleApiError(res);
+          document.getElementById('confirmItemId').textContent = res.data.item.itemId;
+          document.getElementById('confirmItemName').textContent = res.data.item.itemName;
+          document.getElementById('confirmStock').textContent = res.data.item.currentStock;
+          document.getElementById('quantity').value = 1;
+          selectType('OUT');
+          showView('confirmView');
+        })
+        .catch(function () {
+          showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
+        });
+    }
+
+    function selectType(type) {
+      currentType = type;
+      document.getElementById('typeInBtn').classList.toggle('active', type === 'IN');
+      document.getElementById('typeOutBtn').classList.toggle('active', type === 'OUT');
+    }
+
+    document.getElementById('typeInBtn').addEventListener('click', function () { selectType('IN'); });
+    document.getElementById('typeOutBtn').addEventListener('click', function () { selectType('OUT'); });
+
+    document.getElementById('cancelBtn').addEventListener('click', function () {
+      currentItemId = null;
+      startCamera();
+    });
+
+    document.getElementById('submitBtn').addEventListener('click', function () {
+      var quantity = Number(document.getElementById('quantity').value);
+      if (!(quantity > 0)) {
+        alert('数量は1以上の数値で入力してください。');
+        return;
+      }
+      var btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+
+      callApi('scanProcess', { itemId: currentItemId, type: currentType, quantity: quantity })
+        .then(function (res) {
+          btn.disabled = false;
+          if (res.status !== 'OK') return handleApiError(res);
+          document.getElementById('resultTitle').textContent = '登録完了';
+          document.getElementById('resultMessage').textContent =
+            res.message + '(現在在庫数: ' + res.data.currentStock + ')';
+          showView('resultView');
+        })
+        .catch(function () {
+          btn.disabled = false;
+          showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
+        });
+    });
+
+    document.getElementById('rescanBtn').addEventListener('click', function () {
+      currentItemId = null;
+      startCamera();
+    });
+
+    document.getElementById('retryBtn').addEventListener('click', function () {
+      startCamera();
+    });
+
+    document.getElementById('toLoginBtn').addEventListener('click', function () {
+      window.location.href = returnUrl || GAS_WEB_APP_URL;
+    });
+
+    // GASのdoPostはCORSのプリフライトを回避するため、
+    // Content-Type: text/plain;charset=utf-8 固定でJSON文字列を送信する
+    // (architecture/overview.md 4.1・6章、technical_verification.md 補足 参照)。
+    function callApi(action, payload) {
+      var body = Object.assign({ action: action, token: token }, payload);
+      return fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); });
+    }
+
+    function handleApiError(res) {
+      var isTokenError = res.data && res.data.code === 'TOKEN_INVALID';
+      if (isTokenError) {
+        showError('セッションの有効期限が切れました。再度ログインしてください。', true);
+      } else {
+        showError(res.message || '処理に失敗しました。', false);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

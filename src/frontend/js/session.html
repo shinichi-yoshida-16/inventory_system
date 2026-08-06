@@ -1,0 +1,34 @@
+<script>
+  // GAS HTML ServiceはCookieでのセッション保持ができないため、
+  // ログインで取得したトークンをsessionStorageに保持し、
+  // 以後のgoogle.script.run呼び出しに毎回付与する(technical_verification.md 検証結果3)。
+  var SESSION_KEY_ = 'inv_session';
+
+  function saveSession(session) {
+    sessionStorage.setItem(SESSION_KEY_, JSON.stringify(session));
+  }
+
+  function getSession() {
+    var raw = sessionStorage.getItem(SESSION_KEY_);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearSession() {
+    sessionStorage.removeItem(SESSION_KEY_);
+  }
+
+  // 未ログインならログイン画面へ遷移し、nullを返す
+  function requireSession(loginUrl) {
+    var session = getSession();
+    if (!session || !session.token) {
+      window.top.location.href = loginUrl;
+      return null;
+    }
+    return session;
+  }
+</script>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('frontend/css/style'); ?>
+</head>
+<body>
+  <div class="card">
+    <h1>ログイン</h1>
+    <p>登録済みのメールアドレスを入力してください。</p>
+    <label for="email">メールアドレス</label>
+    <input type="email" id="email" placeholder="you@example.com">
+    <button id="loginBtn">ログイン</button>
+    <div id="message" class="message"></div>
+  </div>
+
+  <?!= include('frontend/js/session'); ?>
+  <script>
+    var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
+
+    // 既にセッションが有効ならダッシュボードへ
+    (function () {
+      var session = getSession();
+      if (session && session.token) {
+        window.top.location.href = scriptUrl + '?page=GF01';
+      }
+    })();
+
+    function setMessage(text, type) {
+      var msg = document.getElementById('message');
+      msg.className = 'message' + (type ? ' ' + type : '');
+      msg.textContent = text;
+    }
+
+    function doLogin() {
+      var email = document.getElementById('email').value.trim();
+      setMessage('');
+
+      if (!email) {
+        setMessage('メールアドレスを入力してください。', 'error');
+        return;
+      }
+
+      var btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          btn.disabled = false;
+          if (res.status === 'OK') {
+            saveSession({ token: res.data.token, email: res.data.email, isAdmin: res.data.isAdmin });
+            window.top.location.href = scriptUrl + '?page=GF01';
+          } else {
+            setMessage(res.message, 'error');
+          }
+        })
+        .withFailureHandler(function () {
+          btn.disabled = false;
+          setMessage('通信に失敗しました。ネットワークをご確認のうえ再度お試しください。', 'error');
+        })
+        .login({ email: email });
+    }
+
+    document.getElementById('loginBtn').addEventListener('click', doLogin);
+    document.getElementById('email').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doLogin();
+    });
+  </script>
+</body>
+</html>
