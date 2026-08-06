@@ -1,0 +1,11 @@
+# ドキュメントガイドライン
+- requirements/ : 要件定義
+  - requirement.md : 要件定義書
+  - technical_verification.md : 技術検証結果
+- architecture/ : システム構成
+  - overview.md : 全体構成
+  - sequence.md : 主要シーケンス
+  - database.md : データベース設計
+  - transition.md : 画面遷移設計
+- service/
+- component/ 
