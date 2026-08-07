@@ -103,3 +103,48 @@ sequenceDiagram
 ### 2.4 ログインシーケンス（1.1と対応）
 
 ログイン自体のシーケンスは「1.1 トークンのライフサイクル」と同一フローのため、本節では重複させず1.1を参照する。
+
+### 2.5 未登録品目スキャン時の自動登録シーケンス（FR-12該当）
+
+```mermaid
+sequenceDiagram
+    participant U as 整備士(スマホ)
+    participant GF03 as GF-03(外部ホスティング)
+    participant API as doPost(GAS API層)
+    participant Logic as InvLogic(ロジック層)
+    participant Lock as LockService
+    participant DAO as SheetDao
+    participant SS as スプレッドシート
+
+    U->>GF03: コード読取(JAN/DataMatrix/QR等)
+    GF03->>GF03: フォーマット判定・itemId抽出(全体設計書.md 4.5節)
+    GF03->>API: doPost(action=getItemById, itemId)
+    API->>Logic: 品目検索を委譲
+    Logic->>DAO: findInventoryRowById_(itemId)
+    DAO->>SS: 読み取り
+    SS-->>DAO: 該当なし
+    Logic-->>API: status:ERROR, code:ITEM_NOT_FOUND
+    API-->>GF03: 未登録
+    GF03-->>U: 新規登録フォーム表示(品目名・閾値・保管場所)
+    U->>GF03: 登録情報入力・登録押下
+    GF03->>API: doPost(action=scanProcess, type=IN, quantity=1, itemName, threshold, location)
+    API->>Logic: 登録+入庫処理を委譲
+    Logic->>Lock: getScriptLock()
+    Lock-->>Logic: ロック取得
+    Logic->>DAO: findInventoryRowById_(itemId) ※未登録を再確認
+    Logic->>DAO: 在庫マスタへ新規行追加(currentStock=0で仮作成)
+    DAO->>SS: 書き込み
+    Logic->>Logic: 在庫数 0 += 1 (通常の入庫処理と同じ計算式に合流)
+    Logic->>DAO: 在庫マスタ更新
+    Logic->>DAO: 入出庫履歴に1行追加(種別=IN, 操作者=email)
+    DAO->>SS: 書き込み
+    Logic->>SS: SpreadsheetApp.flush()
+    Logic->>Lock: releaseLock()
+    Logic-->>API: 処理結果(現在在庫数=1)
+    API-->>GF03: status:OK, data
+    GF03-->>U: 登録完了表示
+```
+
+- 「未登録判定」から「新規行追加」までを同一のLockService区間内で行うことで、確認(`getItemById`)と登録(`scanProcess`)の間に別ユーザーの操作が割り込むレース条件を避ける。`getItemById`での未登録判定はあくまで画面分岐用の参考情報であり、実際の登録可否は`scanProcess`内で再判定する
+- 新規登録時は種別を`IN`固定とし、`OUT`は拒否する(存在しない品目からの出庫を防止するため)
+- 登録済み品目の通常の入出庫は2.1・2.2のシーケンスと同一のまま変更なし(識別コードの取得元がQRかJAN/DataMatrixかを問わない)

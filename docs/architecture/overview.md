@@ -20,7 +20,7 @@ graph TB
     end
  
     subgraph ExtHost["外部無料ホスティング（GitHub Pages等）"]
-        GF03["GF-03: QRスキャン画面<br/>HTML + JS + jsQR/html-qrcode"]
+        GF03["GF-03: コードスキャン画面<br/>HTML + JS + ZXing-js(QR/JAN/GS1 DataMatrix等)"]
     end
  
     subgraph GAS["Google Apps Script Webアプリ（単一プロジェクト）"]
@@ -99,7 +99,10 @@ graph TB
         - style.html : システム全体に影響するcss設定
     - external : 外部ホスティング
       - gf03-scan
-        - index.html : カメラ起動・QR読取・doPost呼び出しのみ。業務ロジックを持たない
+        - index.html : カメラ起動・コード読取(QR/JAN/GS1 DataMatrix等、4.5節)・doPost呼び出しのみ。業務ロジックを持たない
+  - verification : 技術検証用の使い捨てページ群(本番非対象)
+    - gs1-datamatrix-scan
+      - index.html : GS1 DataMatrix/JAN読み取り・GTIN抽出の実機検証用ページ
 
 - 命名規則
   - ロジック層の内部専用関数（他ファイルから呼ばれない想定）は末尾に _ を付与する（GAS標準の可視性慣習）。例: findRowById_()
@@ -111,7 +114,7 @@ graph TB
 | ドメイン | ホスティング | 保持するロジック | 理由 |
 |---|---|---|---|
 | GAS Web App | script.google.com（GASデプロイURL） | 認証・許可リスト照合・在庫増減・閾値判定・アラート送信・排他制御・DB入出力の業務ロジック | NR-05（保守性・属人化回避）に基づき、ロジックを1箇所に集約する |
-| 外部ホスティング | GitHub Pages等 | カメラ起動・QRデコード・読み取り結果とセッショントークンをGASへfetch送信するだけのUI層 | GAS HTML ServiceのサンドボックスがgetUserMedia等の機微APIを制限するため、この画面のみ分離せざるを得ない（要件定義6.2節） |
+| 外部ホスティング | GitHub Pages等 | カメラ起動・コードデコード（QR/JAN/GS1 DataMatrix等、4.5節）・読み取り結果とセッショントークンをGASへfetch送信するだけのUI層 | GAS HTML ServiceのサンドボックスがgetUserMedia等の機微APIを制限するため、この画面のみ分離せざるを得ない（要件定義6.2節） |
 
 > 設計原則：GF-03には業務判定ロジック（在庫数計算・閾値比較等）を一切持たせない。すべてGAS側のdoPostに委譲し、GF-03はUIとネットワーク呼び出しに専念する。これによりリスク欄で挙げられた「2ドメインに跨ることによる保守対象増加」の影響を最小化する。
 
@@ -172,13 +175,24 @@ Body（JSON文字列。GAS側で e.postData.contents を JSON.parse する）:
 |---|---|---|
 | `login` | GF-00 | メールアドレス→許可リスト照合、トークン発行 |
 | `getInventoryList` | GF-01, GF-02 | 在庫一覧取得（廃番フラグ考慮） |
-| `getItemById` | GF-03（QR読取直後） | 読み取ったitemIdの品目情報を取得し、確認表示に使う |
-| `scanProcess` | GF-03 | 入庫／出庫登録（4.2の例） |
+| `getItemById` | GF-03（コード読取直後） | 読み取ったitemIdの品目情報を取得し、確認表示に使う。未登録時は`data.code:"ITEM_NOT_FOUND"`を返し、クライアント側の新規登録フォーム分岐に使う |
+| `scanProcess` | GF-03 | 入庫／出庫登録（4.2の例）。`itemName`等を付与して呼ぶと、未登録品目の新規登録＋初回入庫（1点）を同一ロック内で原子的に行う（FR-12、4.5節） |
 | `issueQr` | GF-04 | 新規品目登録＋QRコード発行 |
 | `updateThreshold` | GF-05 | 閾値・通知先の更新 |
 | `setDiscontinued` | GF-02（管理者のみ） | 廃番フラグ更新 |
 
-> 実装時の注意：`scanProcess`は要件定義FR-06/FR-07/FR-09を1トランザクションとして扱う。在庫更新→アラート要否判定→（必要なら）メール送信→フラグ更新、をLockService内で一連に行う（6章シーケンス参照）。
+> 実装時の注意：`scanProcess`は要件定義FR-06/FR-07/FR-09を1トランザクションとして扱う。在庫更新→アラート要否判定→（必要なら）メール送信→フラグ更新、をLockService内で一連に行う（6章シーケンス参照）。未登録品目の場合は、この一連の処理の前段で新規行追加（登録）を同じロック内に含める（FR-12）。登録直後は入庫（IN）のみ許可し、出庫は拒否する。
+
+### 4.5. 識別コードの解釈方式（GF-03）
+GF-03はZXing-jsによりQR／JAN（EAN-13）／GS1 DataMatrix／PDF417／CODE128を読み取り、フォーマットに応じて以下のルールでitemIdを決定してから`getItemById`／`scanProcess`へ渡す。これはコード形式に応じたデータ抽出であり、3章の「GF-03には業務判定ロジックを持たせない」という設計原則が対象とする在庫数計算・閾値比較等には該当しないものとする。
+
+| フォーマット | itemIdの決定方法 |
+|---|---|
+| QRコード | 自社発行分は品目IDをそのまま平文で符号化しているため、デコード結果をそのまま使用する |
+| JANコード（EAN-13） | 13桁の数字の先頭に`0`を付与し、GTIN-14として正規化する |
+| GS1 DataMatrix等 | GS1 Application Identifier構造を解析し、AI「01」（GTIN）の値を抽出する。未対応AIに遭遇した場合や解析失敗時はエラーとし、誤った値をitemIdとして扱わない |
+
+> 実機での読み取り・GTIN抽出の検証結果は `verification/gs1-datamatrix-scan/` を参照。
 
 ## 5. エラーハンドリング方針
 - FE-01

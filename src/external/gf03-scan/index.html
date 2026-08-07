@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QRスキャン(入出庫登録)</title>
+<title>コードスキャン(入出庫登録)</title>
 <style>
   :root {
     --color-primary: #2563eb;
@@ -42,7 +42,7 @@
   }
   #video { width: 100%; max-width: 480px; border-radius: 8px; background: #000; display: block; margin: 0 auto; }
   label { display: block; margin: 12px 0 4px; font-size: 0.9rem; }
-  input[type="number"] {
+  input[type="number"], input[type="text"] {
     width: 100%;
     padding: 8px;
     border: 1px solid var(--color-border);
@@ -68,6 +68,7 @@
   #errorMessage, #resultMessage { font-size: 0.95rem; }
   #errorView h1 { color: var(--color-danger); }
   #resultView h1 { color: var(--color-success); }
+  #registerView p.hint { font-size: 0.85rem; color: #64748b; }
 </style>
 </head>
 <body>
@@ -78,9 +79,8 @@
     </div>
 
     <div id="scanView">
-      <h1>QRスキャン</h1>
+      <h1>コードスキャン</h1>
       <video id="video" playsinline autoplay muted></video>
-      <canvas id="canvas" style="display:none;"></canvas>
       <p id="scanStatus">カメラを起動しています…</p>
     </div>
 
@@ -101,6 +101,24 @@
       </div>
     </div>
 
+    <div id="registerView" style="display:none;">
+      <h1>新規品目登録</h1>
+      <p class="hint">
+        スキャンしたコードは未登録です。品目情報を入力すると、登録と同時に今回の1点を入庫として記録します。
+      </p>
+      <p>コード: <strong id="registerItemId"></strong></p>
+      <label for="registerItemName">品目名</label>
+      <input type="text" id="registerItemName">
+      <label for="registerThreshold">アラート閾値</label>
+      <input type="number" id="registerThreshold" min="0" value="0">
+      <label for="registerLocation">保管場所(任意)</label>
+      <input type="text" id="registerLocation">
+      <div>
+        <button id="registerSubmitBtn">登録して入庫する</button>
+        <button id="registerCancelBtn" class="secondary" type="button">スキャンに戻る</button>
+      </div>
+    </div>
+
     <div id="resultView" style="display:none;">
       <h1 id="resultTitle">登録完了</h1>
       <p id="resultMessage"></p>
@@ -115,7 +133,10 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- ZXing-js: 自社発行QRに加え、メーカー添付のJANコード(EAN-13)・GS1 DataMatrix等も
+       同一画面で読み取れるようマルチフォーマット対応ライブラリを使用する。
+       (verification/gs1-datamatrix-scan/ での実機検証済み) -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"></script>
   <script>
     // ============================================================
     // 設定: GASをWebアプリとしてデプロイした後、必ず以下を書き換えること。
@@ -132,17 +153,11 @@
     // 無い場合はGAS本体のベースURL(?pageなし=GF-00ログイン画面)へフォールバックする。
     document.getElementById('backToDashboardLink').href = returnUrl || GAS_WEB_APP_URL;
 
-    var els = {
-      video: document.getElementById('video'),
-      canvas: document.getElementById('canvas')
-    };
-
-    var scanning = false;
     var currentItemId = null;
     var currentType = 'OUT';
 
     function showView(name) {
-      ['scanView', 'confirmView', 'resultView', 'errorView'].forEach(function (v) {
+      ['scanView', 'confirmView', 'registerView', 'resultView', 'errorView'].forEach(function (v) {
         document.getElementById(v).style.display = v === name ? 'block' : 'none';
       });
     }
@@ -165,18 +180,99 @@
       startCamera();
     }
 
+    // ---- GS1 Application Identifier 簡易パーサ(verification/gs1-datamatrix-scan/ と同じロジック) ----
+    var GS = String.fromCharCode(29); // FNC1はASCII Group Separator(0x1D)として表現される
+    var GS1_AI_TABLE = [
+      { ai: '00', length: 18 }, { ai: '01', length: 14 }, { ai: '02', length: 14 },
+      { ai: '10', length: null }, { ai: '11', length: 6 }, { ai: '12', length: 6 },
+      { ai: '13', length: 6 }, { ai: '15', length: 6 }, { ai: '17', length: 6 },
+      { ai: '20', length: 2 }, { ai: '21', length: null }, { ai: '30', length: null },
+      { ai: '37', length: null }, { ai: '90', length: null }, { ai: '91', length: null },
+      { ai: '92', length: null }, { ai: '240', length: null }, { ai: '241', length: null },
+      { ai: '250', length: null }, { ai: '400', length: null }
+    ];
+
+    function findAiDef(str, index) {
+      for (var len = 4; len >= 2; len--) {
+        var candidate = str.substr(index, len);
+        for (var i = 0; i < GS1_AI_TABLE.length; i++) {
+          if (GS1_AI_TABLE[i].ai === candidate) return GS1_AI_TABLE[i];
+        }
+      }
+      return null;
+    }
+
+    function extractGtinFromGs1(raw) {
+      var s = raw.replace(/^\]\w\d/, '');
+      if (s.charAt(0) === GS) s = s.slice(1);
+
+      var i = 0;
+      while (i < s.length) {
+        var def = findAiDef(s, i);
+        if (!def) return null;
+        var ai = def.ai;
+        i += ai.length;
+
+        var value;
+        if (def.length) {
+          value = s.substr(i, def.length);
+          i += def.length;
+        } else {
+          var gsIndex = s.indexOf(GS, i);
+          if (gsIndex === -1) {
+            value = s.slice(i);
+            i = s.length;
+          } else {
+            value = s.slice(i, gsIndex);
+            i = gsIndex + 1;
+          }
+        }
+        if (ai === '01') return value;
+      }
+      return null;
+    }
+
+    // 読み取ったバーコードの生データ・フォーマットから、在庫マスタの品目IDとして使う文字列を決定する。
+    // - QRコード: 自社発行分は品目IDをそのままテキストで符号化しているため、生データをそのまま使う
+    // - JANコード(EAN-13): 13桁の数字そのものがGTIN。GS1慣例に合わせ先頭に0を付与しGTIN-14化する
+    // - それ以外(GS1 DataMatrix等): GS1要素文字列としてAI「01」(GTIN)を抽出する
+    function extractItemId(result) {
+      var rawText = result.getText();
+      var format = result.getBarcodeFormat ? result.getBarcodeFormat() : null;
+
+      if (format === ZXing.BarcodeFormat.EAN_13) {
+        return '0' + rawText;
+      }
+      if (format === ZXing.BarcodeFormat.QR_CODE) {
+        return rawText;
+      }
+      return extractGtinFromGs1(rawText);
+    }
+
+    var hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXing.BarcodeFormat.QR_CODE,
+      ZXing.BarcodeFormat.DATA_MATRIX,
+      ZXing.BarcodeFormat.EAN_13,
+      ZXing.BarcodeFormat.CODE_128,
+      ZXing.BarcodeFormat.PDF_417
+    ]);
+    var codeReader = new ZXing.BrowserMultiFormatReader(hints);
+
     function startCamera() {
       showView('scanView');
       document.getElementById('scanStatus').textContent = 'カメラを起動しています…';
-      navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: 'environment' } })
-        .then(function (stream) {
-          scanning = true;
-          els.video.srcObject = stream;
-          els.video.setAttribute('playsinline', true);
-          els.video.play();
-          document.getElementById('scanStatus').textContent = 'QRコードを枠内に写してください';
-          requestAnimationFrame(tick);
+
+      codeReader
+        .decodeFromConstraints({ video: { facingMode: 'environment' } }, 'video', function (result, err) {
+          if (result) {
+            codeReader.reset();
+            onDecoded(result);
+          }
+          // errはフレームごとに「まだ検出できていません」の通知としても飛んでくるため無視する
+        })
+        .then(function () {
+          document.getElementById('scanStatus').textContent = 'コードを枠内に写してください';
         })
         .catch(function () {
           showError('カメラを起動できませんでした。ブラウザの設定でカメラの利用を許可してください。', false);
@@ -184,41 +280,35 @@
     }
 
     function stopCamera() {
-      scanning = false;
-      var stream = els.video.srcObject;
-      if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+      codeReader.reset();
     }
 
-    function tick() {
-      if (!scanning) return;
-      if (els.video.readyState === els.video.HAVE_ENOUGH_DATA) {
-        var canvas = els.canvas;
-        canvas.width = els.video.videoWidth;
-        canvas.height = els.video.videoHeight;
-        var ctx = canvas.getContext('2d');
-        ctx.drawImage(els.video, 0, 0, canvas.width, canvas.height);
-        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        var code = jsQR(imageData.data, imageData.width, imageData.height);
-        if (code && code.data) {
-          onDecoded(code.data);
-          return;
-        }
+    function onDecoded(result) {
+      var itemId = extractItemId(result);
+      if (!itemId) {
+        showError('コードの形式を認識できませんでした。別のコードをお試しいただくか、管理者にご確認ください。', false);
+        return;
       }
-      requestAnimationFrame(tick);
-    }
-
-    function onDecoded(itemId) {
-      stopCamera();
       currentItemId = itemId;
+
       callApi('getItemById', { itemId: itemId })
         .then(function (res) {
-          if (res.status !== 'OK') return handleApiError(res);
-          document.getElementById('confirmItemId').textContent = res.data.item.itemId;
-          document.getElementById('confirmItemName').textContent = res.data.item.itemName;
-          document.getElementById('confirmStock').textContent = res.data.item.currentStock;
-          document.getElementById('quantity').value = 1;
-          selectType('OUT');
-          showView('confirmView');
+          if (res.status === 'OK') {
+            document.getElementById('confirmItemId').textContent = res.data.item.itemId;
+            document.getElementById('confirmItemName').textContent = res.data.item.itemName;
+            document.getElementById('confirmStock').textContent = res.data.item.currentStock;
+            document.getElementById('quantity').value = 1;
+            selectType('OUT');
+            showView('confirmView');
+          } else if (res.data && res.data.code === 'ITEM_NOT_FOUND') {
+            document.getElementById('registerItemId').textContent = itemId;
+            document.getElementById('registerItemName').value = '';
+            document.getElementById('registerThreshold').value = 0;
+            document.getElementById('registerLocation').value = '';
+            showView('registerView');
+          } else {
+            handleApiError(res);
+          }
         })
         .catch(function () {
           showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
@@ -239,6 +329,11 @@
       startCamera();
     });
 
+    document.getElementById('registerCancelBtn').addEventListener('click', function () {
+      currentItemId = null;
+      startCamera();
+    });
+
     document.getElementById('submitBtn').addEventListener('click', function () {
       var quantity = Number(document.getElementById('quantity').value);
       if (!(quantity > 0)) {
@@ -252,16 +347,56 @@
         .then(function (res) {
           btn.disabled = false;
           if (res.status !== 'OK') return handleApiError(res);
-          document.getElementById('resultTitle').textContent = '登録完了';
-          document.getElementById('resultMessage').textContent =
-            res.message + '(現在在庫数: ' + res.data.currentStock + ')';
-          showView('resultView');
+          showResult(res);
         })
         .catch(function () {
           btn.disabled = false;
           showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
         });
     });
+
+    document.getElementById('registerSubmitBtn').addEventListener('click', function () {
+      var itemName = document.getElementById('registerItemName').value.trim();
+      var threshold = Number(document.getElementById('registerThreshold').value);
+      var location = document.getElementById('registerLocation').value.trim();
+
+      if (!itemName) {
+        alert('品目名を入力してください。');
+        return;
+      }
+      if (!(threshold >= 0)) {
+        alert('閾値は0以上の数値で入力してください。');
+        return;
+      }
+
+      var btn = document.getElementById('registerSubmitBtn');
+      btn.disabled = true;
+
+      callApi('scanProcess', {
+        itemId: currentItemId,
+        type: 'IN',
+        quantity: 1,
+        itemName: itemName,
+        threshold: threshold,
+        location: location
+      })
+        .then(function (res) {
+          btn.disabled = false;
+          if (res.status !== 'OK') return handleApiError(res);
+          showResult(res);
+        })
+        .catch(function () {
+          btn.disabled = false;
+          showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
+        });
+    });
+
+    function showResult(res) {
+      document.getElementById('resultTitle').textContent = '登録完了';
+      document.getElementById('resultMessage').textContent =
+        res.message + '(現在在庫数: ' + res.data.currentStock + ')';
+      showView('resultView');
+    }
 
     document.getElementById('rescanBtn').addEventListener('click', function () {
       currentItemId = null;
