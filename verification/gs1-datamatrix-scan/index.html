@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GS1 DataMatrix読み取り検証</title>
+<style>
+  :root {
+    --color-primary: #2563eb;
+    --color-danger: #dc2626;
+    --color-success: #16a34a;
+    --color-border: #e2e8f0;
+    --color-text: #1e293b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", Meiryo, sans-serif;
+    background: #f8fafc;
+    color: var(--color-text);
+    margin: 0;
+    padding: 16px;
+  }
+  h1 { font-size: 1.15rem; }
+  .notice {
+    background: #fef9c3;
+    border: 1px solid #eab308;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+  }
+  #video { width: 100%; max-width: 480px; border-radius: 8px; background: #000; display: block; margin: 0 auto; }
+  #status { text-align: center; font-size: 0.9rem; color: #64748b; }
+  button {
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 16px;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: 12px;
+    margin-right: 8px;
+  }
+  button.secondary { background: #64748b; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+  }
+  .gtin-highlight {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: var(--color-success);
+    word-break: break-all;
+  }
+  .raw-value {
+    background: #f1f5f9;
+    border-radius: 4px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--color-border); font-size: 0.85rem; }
+  .unknown-row td { color: var(--color-danger); }
+</style>
+</head>
+<body>
+  <h1>GS1 DataMatrix読み取り検証</h1>
+  <div class="notice">
+    これは本番システムとは切り離した技術検証専用のページです(docs/requirements/technical_verification.md
+    と同じ位置づけ)。実物の部品バーコードをスマホのカメラで読み取り、GTIN(商品識別番号)が正しく
+    抽出できるかを確認する目的だけに使います。読み取り結果はどこにも送信・保存されません。
+  </div>
+
+  <video id="video" playsinline autoplay muted></video>
+  <p id="status">カメラを起動しています…</p>
+
+  <div style="text-align:center;">
+    <button id="rescanBtn" class="secondary" style="display:none;" type="button">再スキャンする</button>
+  </div>
+
+  <div id="resultCard" class="card" style="display:none;">
+    <h2 style="margin-top:0; font-size:1rem;">読み取り結果</h2>
+
+    <p>検出フォーマット: <strong id="formatLabel"></strong></p>
+
+    <p>GTIN(品目識別番号として使う想定):</p>
+    <p id="gtinValue" class="gtin-highlight">-</p>
+
+    <p>生データ(区切り文字は &lt;GS&gt; として表示):</p>
+    <div id="rawValue" class="raw-value"></div>
+
+    <p style="margin-top:16px;">GS1 Application Identifier 解析結果:</p>
+    <table>
+      <thead>
+        <tr><th>AI</th><th>意味</th><th>値</th></tr>
+      </thead>
+      <tbody id="aiTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ZXing-js: QRのみのjsQRと異なり、DataMatrix/PDF417等マルチフォーマット対応 -->
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"></script>
+  <script>
+    var GS = String.fromCharCode(29); // GS1のFNC1はASCII Group Separator(0x1D)として表現される
+
+    // 簡易GS1 AIテーブル(よく使う識別子のみ。長さnullは可変長でGS区切り/終端まで読む)
+    var GS1_AI_TABLE = [
+      { ai: '00', length: 18, name: 'SSCC(輸送梱包シリアル)' },
+      { ai: '01', length: 14, name: 'GTIN(商品識別番号)' },
+      { ai: '02', length: 14, name: 'GTIN(内容物)' },
+      { ai: '10', length: null, name: 'ロット/バッチ番号' },
+      { ai: '11', length: 6, name: '製造日(YYMMDD)' },
+      { ai: '12', length: 6, name: '支払期日(YYMMDD)' },
+      { ai: '13', length: 6, name: '梱包日(YYMMDD)' },
+      { ai: '15', length: 6, name: '賞味期限(YYMMDD)' },
+      { ai: '17', length: 6, name: '有効期限(YYMMDD)' },
+      { ai: '20', length: 2, name: '商品バリエーション' },
+      { ai: '21', length: null, name: 'シリアル番号' },
+      { ai: '30', length: null, name: '数量(可変)' },
+      { ai: '37', length: null, name: '数量' },
+      { ai: '90', length: null, name: '内部相互合意情報' },
+      { ai: '91', length: null, name: '内部利用(社内)' },
+      { ai: '92', length: null, name: '内部利用(社内)' },
+      { ai: '240', length: null, name: '追加商品識別' },
+      { ai: '241', length: null, name: '顧客部品番号' },
+      { ai: '250', length: null, name: 'セカンダリシリアル' },
+      { ai: '400', length: null, name: '顧客発注番号' }
+    ];
+
+    function findAiDef(str, index) {
+      for (var len = 4; len >= 2; len--) {
+        var candidate = str.substr(index, len);
+        for (var i = 0; i < GS1_AI_TABLE.length; i++) {
+          if (GS1_AI_TABLE[i].ai === candidate) return GS1_AI_TABLE[i];
+        }
+      }
+      return null;
+    }
+
+    // GS1エレメントストリングをAIごとに分解する。未知のAIに遭遇したらそこで解析を打ち切り、
+    // 残り全体を「不明」として1件返す(検証用の簡易実装。全AI網羅はしない)。
+    function parseGs1(raw) {
+      var s = raw;
+      // 一部のスキャナはシンボロジー識別子(例: ]d2 = DataMatrix, ]Q1 = QR)を先頭に付与することがある
+      s = s.replace(/^\]\w\d/, '');
+      if (s.charAt(0) === GS) s = s.slice(1);
+
+      var fields = [];
+      var i = 0;
+      while (i < s.length) {
+        var def = findAiDef(s, i);
+        if (!def) {
+          fields.push({ ai: null, name: '不明な区切り以降(未対応AIの可能性)', value: s.slice(i) });
+          break;
+        }
+        i += def.ai.length;
+
+        var value;
+        if (def.length) {
+          value = s.substr(i, def.length);
+          i += def.length;
+        } else {
+          var gsIndex = s.indexOf(GS, i);
+          if (gsIndex === -1) {
+            value = s.slice(i);
+            i = s.length;
+          } else {
+            value = s.slice(i, gsIndex);
+            i = gsIndex + 1;
+          }
+        }
+        fields.push({ ai: def.ai, name: def.name, value: value });
+      }
+      return fields;
+    }
+
+    var hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXing.BarcodeFormat.DATA_MATRIX,
+      ZXing.BarcodeFormat.QR_CODE,
+      ZXing.BarcodeFormat.PDF_417,
+      ZXing.BarcodeFormat.EAN_13,
+      ZXing.BarcodeFormat.CODE_128
+    ]);
+    var codeReader = new ZXing.BrowserMultiFormatReader(hints);
+    var scanning = false;
+
+    function setStatus(text) {
+      document.getElementById('status').textContent = text;
+    }
+
+    function startScan() {
+      document.getElementById('resultCard').style.display = 'none';
+      document.getElementById('rescanBtn').style.display = 'none';
+      setStatus('カメラを起動しています…');
+
+      codeReader
+        .decodeFromConstraints({ video: { facingMode: 'environment' } }, 'video', function (result, err) {
+          if (result) {
+            scanning = false;
+            codeReader.reset();
+            handleDecoded(result);
+          }
+          // errはフレームごとに「まだ検出できていません」の通知としても飛んでくるため無視する
+        })
+        .then(function () {
+          scanning = true;
+          setStatus('バーコードを枠内に写してください');
+        })
+        .catch(function () {
+          setStatus('カメラを起動できませんでした。ブラウザの設定でカメラの利用を許可してください。');
+        });
+    }
+
+    function handleDecoded(result) {
+      var rawText = result.getText();
+      var format = result.getBarcodeFormat ? result.getBarcodeFormat() : '';
+
+      document.getElementById('formatLabel').textContent = formatName(format);
+      document.getElementById('rawValue').textContent = rawText.split(GS).join('<GS>');
+
+      var fields = parseGs1(rawText);
+      var gtinField = fields.filter(function (f) { return f.ai === '01'; })[0];
+      document.getElementById('gtinValue').textContent = gtinField ? gtinField.value : '(GTIN未検出。QRなど別形式の可能性)';
+
+      var tbody = document.getElementById('aiTableBody');
+      tbody.innerHTML = '';
+      fields.forEach(function (f) {
+        var tr = document.createElement('tr');
+        if (!f.ai) tr.className = 'unknown-row';
+        [f.ai || '-', f.name, f.value].forEach(function (val) {
+          var td = document.createElement('td');
+          td.textContent = val;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      setStatus('読み取り完了');
+      document.getElementById('resultCard').style.display = 'block';
+      document.getElementById('rescanBtn').style.display = 'inline-block';
+    }
+
+    function formatName(format) {
+      var names = {};
+      names[ZXing.BarcodeFormat.DATA_MATRIX] = 'GS1 DataMatrix';
+      names[ZXing.BarcodeFormat.QR_CODE] = 'QRコード';
+      names[ZXing.BarcodeFormat.PDF_417] = 'PDF417';
+      names[ZXing.BarcodeFormat.EAN_13] = 'EAN-13(JANコード)';
+      names[ZXing.BarcodeFormat.CODE_128] = 'CODE128';
+      return names[format] || String(format);
+    }
+
+    document.getElementById('rescanBtn').addEventListener('click', startScan);
+
+    startScan();
+  </script>
+</body>
+</html>

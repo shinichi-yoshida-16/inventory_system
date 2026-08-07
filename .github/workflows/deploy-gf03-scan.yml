@@ -1,7 +1,10 @@
 name: Deploy GF-03 scan page to GitHub Pages
 
-# src/external/gf03-scan(GAS本体とは別ドメインで公開する外部無償ホスティング分)のみを
-# GitHub Pagesへ公開する。docs/(設計書)やsrc/core(GAS本体)は公開対象に含めない。
+# 公開対象は以下の2つのみ。docs/(設計書)やsrc/core(GAS本体)は含めない。
+#   - src/external/gf03-scan  : 本番のGF-03(GAS本体とは別ドメインで公開する外部無償ホスティング分)
+#       → https://<user>.github.io/<repo>/
+#   - verification/           : 技術検証用の使い捨てページ群(例: GS1 DataMatrix読み取り検証)
+#       → https://<user>.github.io/<repo>/verification/<検証名>/
 # 参照: docs/architecture/overview.md 3章, docs/requirements/technical_verification.md
 
 on:
@@ -9,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'src/external/gf03-scan/**'
+      - 'verification/**'
   workflow_dispatch:
 
 permissions:
@@ -33,10 +37,20 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload gf03-scan as Pages artifact
+      # gf03-scanをサイトのルートに、verification配下を/verification/以下にまとめて配置する。
+      - name: Build Pages site
+        run: |
+          mkdir -p _site
+          cp -r src/external/gf03-scan/. _site/
+          if [ -d verification ]; then
+            mkdir -p _site/verification
+            cp -r verification/. _site/verification/
+          fi
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: src/external/gf03-scan
+          path: _site
 
       - name: Deploy to GitHub Pages
         id: deployment
