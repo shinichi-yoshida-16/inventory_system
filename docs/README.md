@@ -7,3 +7,5 @@
   - sequence.md : 主要シーケンス
   - database.md : データベース設計
   - transition.md : 画面遷移設計
+- manuals/
+  - user_manual.md : ユーザーマニュアル
