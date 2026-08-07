@@ -1,7 +1,5 @@
 <script>
-  // GAS HTML ServiceはCookieでのセッション保持ができないため、
-  // ログインで取得したトークンをsessionStorageに保持し、
-  // 以後のgoogle.script.run呼び出しに毎回付与する(technical_verification.md 検証結果3)。
+  // GAS HTML ServiceはCookieでのセッション保持ができないため、ログインで取得したトークンをsessionStorageに保持し、以後のgoogle.script.run呼び出しに毎回付与する(technical_verification.md 検証結果3)。
   var SESSION_KEY_ = 'inv_session';
 
   function saveSession(session) {

@@ -67,9 +67,12 @@ graph TB
 
 ### 2.2. フォルダ構成
 - inventory_system : プロジェクトルート
+  - .github
+    - workflows
+      - deploy-gf03-scan.yml : src/external/gf03-scan/ のみをGitHub Pagesへデプロイするワークフロー（7章参照）
   - docs : ドキュメントフォルダ
     - requestments : 要件定義
-      - requestment: 要件定義書
+      - requestment : 要件定義書
       - technical_verification.md : 技術検証資料
     - architecture : 設計書
       - overview.md : 全体設計書
@@ -91,7 +94,9 @@ graph TB
         - GF04_qr_issue.html : QR設定画面
         - GF05_threshold_setting.html : 閾値設定画面
       - js
+        - session.html : トークンのsessionStorage保管による
       - css
+        - style.html : システム全体に影響するcss設定
     - external : 外部ホスティング
       - gf03-scan
         - index.html : カメラ起動・QR読取・doPost呼び出しのみ。業務ロジックを持たない
@@ -206,8 +211,47 @@ Body（JSON文字列。GAS側で e.postData.contents を JSON.parse する）:
 | NR-06 拡張性 | データアクセス層（SheetDao.gs）を分離しているため、将来的にスプレッドシート→Cloud SQL等への切替時もロジック層への影響を最小化できる。拠点追加時は在庫マスタに「拠点ID」列を追加する形で対応可能な設計としている|
 | NR-07 データ整合性 | データ編集の競合があった際、基本的にはプログラムによる競合回避、それができないようであれば棚卸などの運用で対応 |
 
-## 7. 以降の検討事項
+## 7. GF-03 デプロイ手順
+### 7.1. 方式選定
+- GitHub Pages標準の「docs/フォルダを公開」方式は、本リポジトリのdocs/を設計書用途（要件定義・設計書格納）で既に使用しているため採用しない
+- Settings → Pages の Source を「GitHub Actions」に変更し、.github/workflows/deploy-gf03-scan.yml により src/external/gf03-scan/ 配下のみをビルド成果物として公開する方式を採用
+
+### 7.2. 初回設定手順
+1. GitHub側の一回限りの設定（Web UI操作、リポジトリ管理者が実施）
+- リポジトリの Settings → Pages を開く
+- Source を「GitHub Actions」に変更
+- ワークフローファイルをコミット・プッシュする際、GitHub Actions関連ファイルの追加にはPATにworkflowスコープが必要（通常のリポジトリ操作用PATとは別途付与が必要な場合がある）
+
+2. ワークフローファイルのコミット・プッシュ
+- .github/workflows/deploy-gf03-scan.yml を追加し、mainブランチへpush
+- push契機、またはworkflow_dispatch（Actionsタブから手動実行）でワークフローが起動し、src/external/gf03-scan/ が公開される
+
+3. 公開確認
+- Actionsタブでワークフロー「Deploy GF-03 scan page to GitHub Pages」の成功を確認
+- 成功後、Settings → Pages に公開URLが表示されることを確認
+
+4. アプリ側の接続設定（相互参照）
+- src/external/gf03-scan/index.html 内の GAS_WEB_APP_URL 定数を、GASの /exec デプロイURLに書き換え、コミット・プッシュする（このpath変更が再度ワークフローを起動し、自動で再公開される）
+- GAS側のスクリプトプロパティ GF03_URL に、発行された公開URLを設定する（GASエディタでの手動設定、CORS許可等の判定に使用）
+
+### 7.3. 確定している設定値
+- GF-03公開URL
+  - GitHub Pages
+  - https://shinichi-yoshida-16.github.io/inventory_system/
+- GAS Web AppデプロイURL
+  - src/external/gf03-scan/index.html 内 GAS_WEB_APP_URL
+  - https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
+- GF-03公開URL（逆参照）
+  - GASスクリプトプロパティ GF03_URL
+  - https://shinichi-yoshida-16.github.io/inventory_system/
+
+### 7.4. 運用上の注意点
+- index.html（GAS_WEB_APP_URL書き換え等）を変更するたびにpushが必要で、そのpushが自動的に再デプロイをトリガーする（手動でのActions再実行は基本的に不要）
+- GASのデプロイURLを再発行（新バージョンデプロイ等）した場合は、GAS_WEB_APP_URLの書き換え・再pushとスクリプトプロパティGF03_URL側は影響を受けないため見直し不要（GF03_URLはGF-03自身のURLでGAS URLではない点に注意）
+
+## 8. 以降の検討事項
 - 実装直前（要件定義10章のリスクにあるとおり）に、GAS HTML Serviceのカメラアクセス制限に関する最新の公式情報を再確認すること
+  - 直近sく制したため、最新の公式情報に変更なし
 - GF-04のQRコード印刷レイアウト（ラベル用紙サイズ等）の詳細は、実機での印刷検証を待って確定する
 - 許可リストの定期棚卸の運用フロー（頻度・担当者）は、本書のスコープ外（運用設計フェーズで別途整理）
 - GF-03のトークン漏えいリスクについて、QRコード自体にワンタイムパラメータを含める等の追加対策は、検証運用の結果を見て要否を判断する
