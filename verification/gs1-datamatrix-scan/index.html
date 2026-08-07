@@ -226,9 +226,19 @@
       document.getElementById('formatLabel').textContent = formatName(format);
       document.getElementById('rawValue').textContent = rawText.split(GS).join('<GS>');
 
-      var fields = parseGs1(rawText);
-      var gtinField = fields.filter(function (f) { return f.ai === '01'; })[0];
-      document.getElementById('gtinValue').textContent = gtinField ? gtinField.value : '(GTIN未検出。QRなど別形式の可能性)';
+      // JANコード(EAN-13)はAI構造を持たず、13桁の数字そのものがGTIN-13。
+      // GS1の慣例に合わせ先頭に0を付与しGTIN-14相当として扱う(DataMatrix側のAI「01」14桁と桁数を揃える)。
+      var fields, gtinValue;
+      if (format === ZXing.BarcodeFormat.EAN_13) {
+        gtinValue = '0' + rawText;
+        fields = [{ ai: 'JAN', name: 'GTIN-13(JANコード、先頭に0を付与)', value: gtinValue }];
+      } else {
+        fields = parseGs1(rawText);
+        var gtinField = fields.filter(function (f) { return f.ai === '01'; })[0];
+        gtinValue = gtinField ? gtinField.value : null;
+      }
+
+      document.getElementById('gtinValue').textContent = gtinValue || '(GTIN未検出。想定外の形式の可能性)';
 
       var tbody = document.getElementById('aiTableBody');
       tbody.innerHTML = '';
