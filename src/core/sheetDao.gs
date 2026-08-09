@@ -77,9 +77,14 @@ function findInventoryRowById_(itemId) {
 }
 
 // 新規品目1件をInventoryMaster末尾に追加する(H列の更新年月日は自動付与)。戻り値なし。
+// itemIdはJANコード由来のGTIN等、数字のみの文字列になり得る。appendRow()でそのまま書き込むと
+// スプレッドシートの自動型変換で数値化され、先頭の0が失われて以後の文字列一致検索が壊れるため、
+// 書き込み前にA列をプレーンテキスト書式にしてから値を設定する。
 function appendInventoryRow_(item) {
   var sheet = getSheet_(SHEET_NAMES_.INVENTORY);
-  sheet.appendRow([
+  var rowIndex = sheet.getLastRow() + 1;
+  sheet.getRange(rowIndex, 1).setNumberFormat('@');
+  sheet.getRange(rowIndex, 1, 1, 8).setValues([[
     item.itemId,
     item.itemName,
     item.currentStock,
@@ -88,7 +93,7 @@ function appendInventoryRow_(item) {
     item.location || '',
     item.discontinuedFlag,
     new Date()
-  ]);
+  ]]);
 }
 
 // 指定行(rowIndex)のInventoryMasterを部分更新する。fieldsに含まれる列のみ書き換え、
@@ -133,9 +138,13 @@ function generateNextItemId_() {
 // 列定義: A transactionAt, B itemId, C type(IN/OUT), D quantity, E userEmail
 
 // 入出庫履歴を1行追記する。既存行の更新・削除は行わない(監査ログ性を担保するための設計、database.md 2章)。
+// itemId列(B)はappendInventoryRow_と同じ理由で、書き込み前にプレーンテキスト書式にする
+// (GTIN等の数字のみの文字列で先頭の0が失われるのを防ぐ)。
 function appendTransactionLog_(itemId, type, quantity, userEmail) {
   var sheet = getSheet_(SHEET_NAMES_.TRANSACTION);
-  sheet.appendRow([new Date(), itemId, type, quantity, userEmail]);
+  var rowIndex = sheet.getLastRow() + 1;
+  sheet.getRange(rowIndex, 2).setNumberFormat('@');
+  sheet.getRange(rowIndex, 1, 1, 5).setValues([[new Date(), itemId, type, quantity, userEmail]]);
 }
 
 // ---- NotificationTargets ----

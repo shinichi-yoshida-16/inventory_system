@@ -42,25 +42,33 @@ function doPost(e) {
     return jsonOutput_(errorResponse_('リクエストの解析に失敗しました。'));
   }
 
-  switch (request.action) {
-    case 'login':
-      return jsonOutput_(login(request));
-    case 'getInventoryList':
-      return jsonOutput_(getInventoryList(request));
-    case 'getItemById':
-      return jsonOutput_(getItemById(request));
-    case 'scanProcess':
-      return jsonOutput_(scanProcess(request));
-    case 'issueQr':
-      return jsonOutput_(issueQr(request));
-    case 'updateThreshold':
-      return jsonOutput_(updateThreshold(request));
-    case 'getNotificationTargets':
-      return jsonOutput_(getNotificationTargets(request));
-    case 'setDiscontinued':
-      return jsonOutput_(setDiscontinued(request));
-    default:
-      return jsonOutput_(errorResponse_('不明なactionです: ' + request.action));
+  // ロジック層で想定外の例外が発生した場合、GASのデフォルト動作ではHTMLのエラーページが
+  // 返ってしまい、クライアント側のresponse.json()が失敗して「通信に失敗しました」という
+  // 誤解を招く表示になる(原因が特定しづらい)。ここで捕捉し、必ずJSONで返すようにする。
+  try {
+    switch (request.action) {
+      case 'login':
+        return jsonOutput_(login(request));
+      case 'getInventoryList':
+        return jsonOutput_(getInventoryList(request));
+      case 'getItemById':
+        return jsonOutput_(getItemById(request));
+      case 'scanProcess':
+        return jsonOutput_(scanProcess(request));
+      case 'issueQr':
+        return jsonOutput_(issueQr(request));
+      case 'updateThreshold':
+        return jsonOutput_(updateThreshold(request));
+      case 'getNotificationTargets':
+        return jsonOutput_(getNotificationTargets(request));
+      case 'setDiscontinued':
+        return jsonOutput_(setDiscontinued(request));
+      default:
+        return jsonOutput_(errorResponse_('不明なactionです: ' + request.action));
+    }
+  } catch (err) {
+    console.error('doPost処理中に例外が発生しました(action=' + request.action + '): ' + err);
+    return jsonOutput_(errorResponse_('サーバー側でエラーが発生しました。時間をおいて再度お試しください。'));
   }
 }
 
