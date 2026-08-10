@@ -39,12 +39,19 @@ jobs:
 
       # gf03-scanをサイトのルートに、verification配下を/verification/以下にまとめて配置する。
       - name: Build Pages site
+        env:
+          GAS_WEB_APP_URL: ${{ secrets.GAS_WEB_APP_URL }}
         run: |
           mkdir -p _site
           cp -r src/external/gf03-scan/. _site/
           if [ -d verification ]; then
             mkdir -p _site/verification
             cp -r verification/. _site/verification/
+          fi
+          # リポジトリには実URLをコミットしない方針のため、ビルド時にシークレットで置換する。
+          # 未設定の場合はプレースホルダーのままとし、GF-03側の未設定検知(init()内)に委ねる。
+          if [ -n "$GAS_WEB_APP_URL" ]; then
+            find _site -name '*.html' -print0 | xargs -0 sed -i "s|__GAS_WEB_APP_URL__|${GAS_WEB_APP_URL}|g"
           fi
 
       - name: Upload Pages artifact

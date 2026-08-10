@@ -139,10 +139,13 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"></script>
   <script>
     // ============================================================
-    // 設定: GASをWebアプリとしてデプロイした後、必ず以下を書き換えること。
-    // (architecture/overview.md 4.2, requirements/requestment.md 10章 参照)
+    // 設定: 実際のGAS Webアプリ(/exec)URLは、リポジトリに直接コミットせず、
+    // GitHub Actionsのシークレット(GAS_WEB_APP_URL)からビルド時に注入する
+    // (.github/workflows/deploy-gf03-scan.yml 参照)。
+    // ローカルで直接このファイルを開いて動作確認する場合のみ、このプレースホルダーを
+    // 一時的に実URLへ書き換えて構わないが、コミットはしないこと。
     // ============================================================
-    var GAS_WEB_APP_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+    var GAS_WEB_APP_URL = '__GAS_WEB_APP_URL__';
     // ============================================================
 
     var params = new URLSearchParams(window.location.search);
@@ -173,7 +176,7 @@
         showError('セッション情報が見つかりません。ダッシュボード画面から再度アクセスしてください。', true);
         return;
       }
-      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL.indexOf('REPLACE_WITH') === 0) {
+      if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL.indexOf('__GAS_WEB_APP_URL__') === 0) {
         showError('システム設定が未完了です(GAS_WEB_APP_URL未設定)。管理者にお問い合わせください。', false);
         return;
       }
