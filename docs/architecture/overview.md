@@ -113,7 +113,7 @@ graph TB
 ## 3. ドメイン構成と責務の分離
 | ドメイン | ホスティング | 保持するロジック | 理由 |
 |---|---|---|---|
-| GAS Web App | script.google.com（GASデプロイURL） | 認証・許可リスト照合・在庫増減・閾値判定・アラート送信・排他制御・DB入出力の業務ロジック | NR-05（保守性・属人化回避）に基づき、ロジックを1箇所に集約する |
+| GAS Web App | script.google.com（GASデプロイURL、実URLは非公開） | 認証・許可リスト照合・在庫増減・閾値判定・アラート送信・排他制御・DB入出力の業務ロジック | NR-05（保守性・属人化回避）に基づき、ロジックを1箇所に集約する |
 | 外部ホスティング | GitHub Pages等 | カメラ起動・コードデコード（QR/JAN/GS1 DataMatrix等、4.5節）・読み取り結果とセッショントークンをGASへfetch送信するだけのUI層 | GAS HTML ServiceのサンドボックスがgetUserMedia等の機微APIを制限するため、この画面のみ分離せざるを得ない（要件定義6.2節） |
 
 > 設計原則：GF-03には業務判定ロジック（在庫数計算・閾値比較等）を一切持たせない。すべてGAS側のdoPostに委譲し、GF-03はUIとネットワーク呼び出しに専念する。これによりリスク欄で挙げられた「2ドメインに跨ることによる保守対象増加」の影響を最小化する。
@@ -251,13 +251,13 @@ GF-03はZXing-jsによりQR／JAN（EAN-13）／GS1 DataMatrix／PDF417／CODE12
 ### 7.3. 確定している設定値
 - GF-03公開URL
   - GitHub Pages
-  - https://shinichi-yoshida-16.github.io/inventory_system/
+  - `https://<GitHubユーザー名>.github.io/<リポジトリ名>/`（実URLはリポジトリには記載しない）
 - GAS Web AppデプロイURL
   - src/external/gf03-scan/index.html 内 GAS_WEB_APP_URL
-  - https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec
+  - GASの /exec デプロイURL（実URLはリポジトリには記載しない。デプロイのたびに各自書き換える）
 - GF-03公開URL（逆参照）
   - GASスクリプトプロパティ GF03_URL
-  - https://shinichi-yoshida-16.github.io/inventory_system/
+  - 上記GF-03公開URLと同値（実URLはリポジトリには記載しない）
 
 ### 7.4. 運用上の注意点
 - index.html（GAS_WEB_APP_URL書き換え等）を変更するたびにpushが必要で、そのpushが自動的に再デプロイをトリガーする（手動でのActions再実行は基本的に不要）

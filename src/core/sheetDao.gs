@@ -19,7 +19,7 @@ var SHEET_NAMES_ = {
 
 // DB用スプレッドシートを取得する。SPREADSHEET_ID未設定時はコンテナバインド前提でアクティブシートを返す。
 function getSpreadsheet_() {
-  var ssId = PropertiesService.getScriptProperties().getProperty('YOUR_SPREADSHEET_ID');
+  var ssId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
   return ssId ? SpreadsheetApp.openById(ssId) : SpreadsheetApp.getActiveSpreadsheet();
 }
 

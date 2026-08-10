@@ -3,10 +3,9 @@
 - 対象システム : 整備部品在庫管理システム
 - 本書の位置付け : データベース（Googleスプレッドシート）の詳細設計
 - 対象 : 要件定義書 7章のデータ設計を、実装可能な列定義まで落とし込んだもの
-- 実体 : 以下のGoogleスプレッドシートを本番DBとして使用する
-  - URL : https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit
-  - スプレッドシートID : YOUR_SPREADSHEET_ID
-  - GASプロジェクトからはSpreadsheetApp.openById()にこのIDを指定してアクセスする（sheetDao.gsに定数として集約する想定）
+- 実体 : Googleスプレッドシートを本番DBとして使用する
+  - スプレッドシートIDはスクリプトプロパティ `SPREADSHEET_ID` に設定する（リポジトリには含めない。sheetDao.gsの`getSpreadsheet_()`が読み取る）
+  - GASプロジェクトからはSpreadsheetApp.openById()にこのIDを指定してアクセスする
 
 シート名はA1にヘッダー行を持つ想定とする。
 
