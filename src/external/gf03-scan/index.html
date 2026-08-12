@@ -356,7 +356,7 @@
         })
         .catch(function (err) {
           btn.disabled = false;
-          showApiFailure_(err);
+          showApiFailure_(err, true);
         });
     });
 
@@ -392,7 +392,7 @@
         })
         .catch(function (err) {
           btn.disabled = false;
-          showApiFailure_(err);
+          showApiFailure_(err, true);
         });
     });
 
@@ -450,14 +450,22 @@
     }
 
     // callApiの失敗理由に応じてエラーメッセージを出し分ける。
-    function showApiFailure_(err) {
+    // hasSideEffectは、GAS側で在庫の書き込みを伴うaction(scanProcess)向け。
+    // 応答が届かなかっただけでGAS側の処理自体は完了している場合があるため、
+    // その旨を付記して二重操作を防ぐ。
+    function showApiFailure_(err, hasSideEffect) {
+      var suffix = hasSideEffect
+        ? '登録/入出庫処理は完了している可能性があります。一度在庫一覧をご確認ください。'
+        : '';
       if (err && err.type === 'invalidResponse') {
         showError(
-          'サーバーからの応答を処理できませんでした(想定外の形式のデータを受信しました)。解消しない場合は管理者にご連絡ください。',
+          'サーバーからの応答を処理できませんでした(想定外の形式のデータを受信しました)。' +
+            suffix +
+            '解消しない場合は管理者にご連絡ください。',
           false
         );
       } else {
-        showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
+        showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。' + suffix, false);
       }
     }
 
