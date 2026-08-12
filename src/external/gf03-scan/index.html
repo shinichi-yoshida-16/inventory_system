@@ -317,9 +317,7 @@
             handleApiError(res);
           }
         })
-        .catch(function () {
-          showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
-        });
+        .catch(showApiFailure_);
     }
 
     function selectType(type) {
@@ -356,9 +354,9 @@
           if (res.status !== 'OK') return handleApiError(res);
           showResult(res);
         })
-        .catch(function () {
+        .catch(function (err) {
           btn.disabled = false;
-          showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
+          showApiFailure_(err);
         });
     });
 
@@ -392,9 +390,9 @@
           if (res.status !== 'OK') return handleApiError(res);
           showResult(res);
         })
-        .catch(function () {
+        .catch(function (err) {
           btn.disabled = false;
-          showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
+          showApiFailure_(err);
         });
     });
 
@@ -429,13 +427,38 @@
     // GASのdoPostはCORSのプリフライトを回避するため、
     // Content-Type: text/plain;charset=utf-8 固定でJSON文字列を送信する
     // (architecture/overview.md 4.1・6章、technical_verification.md 補足 参照)。
+    //
+    // fetch自体が失敗する「真の通信断」と、fetchは成功したがJSONとして
+    // パースできない「レスポンス異常」(GAS側が想定外のエラーでHTML等の
+    // 非JSONレスポンスを返した場合など)を区別できるよう、後者は種別を付けて
+    // 例外を投げる。呼び出し側はこれを見てメッセージを出し分ける(showApiFailure_参照)。
     function callApi(action, payload) {
       var body = Object.assign({ action: action, token: token }, payload);
       return fetch(GAS_WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(body)
-      }).then(function (r) { return r.json(); });
+      }).then(function (r) {
+        return r.text().then(function (text) {
+          try {
+            return JSON.parse(text);
+          } catch (e) {
+            throw { type: 'invalidResponse' };
+          }
+        });
+      });
+    }
+
+    // callApiの失敗理由に応じてエラーメッセージを出し分ける。
+    function showApiFailure_(err) {
+      if (err && err.type === 'invalidResponse') {
+        showError(
+          'サーバーからの応答を処理できませんでした(想定外の形式のデータを受信しました)。解消しない場合は管理者にご連絡ください。',
+          false
+        );
+      } else {
+        showError('通信に失敗しました。電波状況をご確認のうえ再試行してください。', false);
+      }
     }
 
     function handleApiError(res) {
