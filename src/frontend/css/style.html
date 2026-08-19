@@ -48,9 +48,23 @@
   button.secondary { background: #64748b; }
   button.danger { background: var(--color-danger); }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-top-color: #fff;
+    border-radius: 50%;
+    vertical-align: -2px;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: #64748b; font-size: 0.9rem; padding: 8px 0; }
   .message { margin-top: 12px; padding: 10px; border-radius: 4px; display: none; }
   .message.error { background: #fee2e2; color: var(--color-danger); display: block; }
   .message.success { background: #dcfce7; color: var(--color-success); display: block; }
+  .message.info { background: #e0f2fe; color: #075985; display: block; }
   table { width: 100%; border-collapse: collapse; margin-top: 12px; }
   th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--color-border); font-size: 0.9rem; }
   tr.alert td { background: #fee2e2; }

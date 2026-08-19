@@ -51,6 +51,8 @@
 
     function loadList(includeDiscontinued) {
       setMessage('');
+      document.getElementById('itemTableBody').innerHTML =
+        '<tr><td colspan="6" class="loading-text">読み込み中…</td></tr>';
       google.script.run
         .withSuccessHandler(function (res) {
           if (res.status !== 'OK') {
@@ -84,7 +86,7 @@
           btn.className = item.discontinuedFlag ? 'secondary' : 'danger';
           btn.textContent = item.discontinuedFlag ? '廃番解除' : '廃番にする';
           btn.addEventListener('click', function () {
-            toggleDiscontinued(item.itemId, !item.discontinuedFlag);
+            toggleDiscontinued(item.itemId, !item.discontinuedFlag, btn);
           });
           actionTd.appendChild(btn);
           if (item.discontinuedFlag) {
@@ -100,16 +102,19 @@
       });
     }
 
-    function toggleDiscontinued(itemId, discontinued) {
+    function toggleDiscontinued(itemId, discontinued, btn) {
+      setButtonLoading(btn, true, '処理中…');
       google.script.run
         .withSuccessHandler(function (res) {
           if (res.status === 'OK') {
             loadList(document.getElementById('showDiscontinued').checked);
           } else {
+            setButtonLoading(btn, false);
             setMessage(res.message, 'error');
           }
         })
         .withFailureHandler(function () {
+          setButtonLoading(btn, false);
           setMessage('操作に失敗しました。', 'error');
         })
         .setDiscontinued({ token: session.token, itemId: itemId, discontinued: discontinued });

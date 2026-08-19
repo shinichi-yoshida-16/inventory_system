@@ -75,10 +75,13 @@
 
     // 再発行プルダウンに既存品目(廃番除く)を読み込む。新規発行後にも呼び直して最新化する。
     function loadReissueOptions() {
+      var select = document.getElementById('reissueSelect');
+      select.disabled = true;
+      select.innerHTML = '<option>読み込み中…</option>';
       google.script.run
         .withSuccessHandler(function (res) {
+          select.disabled = false;
           if (res.status !== 'OK') return;
-          var select = document.getElementById('reissueSelect');
           var previousValue = select.value;
           select.innerHTML = '';
           res.data.items.forEach(function (item) {
@@ -90,6 +93,7 @@
           if (previousValue) select.value = previousValue;
         })
         .withFailureHandler(function () {
+          select.disabled = false;
           setMessage('品目一覧の取得に失敗しました。', 'error');
         })
         .getInventoryList({ token: session.token });
@@ -117,11 +121,11 @@
       }
 
       var btn = document.getElementById('issueBtn');
-      btn.disabled = true;
+      setButtonLoading(btn, true, '発行中…');
 
       google.script.run
         .withSuccessHandler(function (res) {
-          btn.disabled = false;
+          setButtonLoading(btn, false);
           if (res.status !== 'OK') {
             setMessage(res.message, 'error');
             return;
@@ -131,7 +135,7 @@
           loadReissueOptions();
         })
         .withFailureHandler(function () {
-          btn.disabled = false;
+          setButtonLoading(btn, false);
           setMessage('登録に失敗しました。時間をおいて再度お試しください。', 'error');
         })
         .issueQr({ token: session.token, itemName: itemName, threshold: threshold, location: location });

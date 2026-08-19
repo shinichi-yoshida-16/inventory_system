@@ -62,6 +62,18 @@
   }
   button.secondary { background: #64748b; }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    border-top-color: #fff;
+    border-radius: 50%;
+    vertical-align: -2px;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .type-toggle { margin-top: 12px; }
   .type-btn { background: #e2e8f0; color: var(--color-text); }
   .type-btn.active { background: var(--color-primary); color: #fff; }
@@ -158,6 +170,25 @@
 
     var currentItemId = null;
     var currentType = 'OUT';
+
+    // ボタン操作の応答有無が分かるよう、通信中はボタンをスピナー付きの無効表示に切り替える。
+    // GAS本体のsession.htmlと同じ実装(GF-03は別オリジンで共通includeを読み込めないため複製)。
+    function setButtonLoading(btn, isLoading, loadingLabel) {
+      if (!btn) return;
+      if (isLoading) {
+        if (btn.dataset.originalHtml === undefined) {
+          btn.dataset.originalHtml = btn.innerHTML;
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>' + (loadingLabel || '処理中…');
+      } else {
+        btn.disabled = false;
+        if (btn.dataset.originalHtml !== undefined) {
+          btn.innerHTML = btn.dataset.originalHtml;
+          delete btn.dataset.originalHtml;
+        }
+      }
+    }
 
     function showView(name) {
       ['scanView', 'confirmView', 'registerView', 'resultView', 'errorView'].forEach(function (v) {
@@ -297,6 +328,7 @@
         return;
       }
       currentItemId = itemId;
+      document.getElementById('scanStatus').textContent = '品目情報を確認しています…';
 
       callApi('getItemById', { itemId: itemId })
         .then(function (res) {
@@ -346,16 +378,16 @@
         return;
       }
       var btn = document.getElementById('submitBtn');
-      btn.disabled = true;
+      setButtonLoading(btn, true, '登録中…');
 
       callApi('scanProcess', { itemId: currentItemId, type: currentType, quantity: quantity })
         .then(function (res) {
-          btn.disabled = false;
+          setButtonLoading(btn, false);
           if (res.status !== 'OK') return handleApiError(res);
           showResult(res);
         })
         .catch(function (err) {
-          btn.disabled = false;
+          setButtonLoading(btn, false);
           showApiFailure_(err, true);
         });
     });
@@ -375,7 +407,7 @@
       }
 
       var btn = document.getElementById('registerSubmitBtn');
-      btn.disabled = true;
+      setButtonLoading(btn, true, '登録中…');
 
       callApi('scanProcess', {
         itemId: currentItemId,
@@ -386,12 +418,12 @@
         location: location
       })
         .then(function (res) {
-          btn.disabled = false;
+          setButtonLoading(btn, false);
           if (res.status !== 'OK') return handleApiError(res);
           showResult(res);
         })
         .catch(function (err) {
-          btn.disabled = false;
+          setButtonLoading(btn, false);
           showApiFailure_(err, true);
         });
     });

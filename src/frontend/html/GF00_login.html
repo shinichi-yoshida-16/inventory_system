@@ -42,11 +42,17 @@
       }
 
       var btn = document.getElementById('loginBtn');
-      btn.disabled = true;
+      setButtonLoading(btn, true, 'ログイン中…');
+
+      // 応答に時間がかかっている場合、処理中なのか止まっているのか分かるよう案内を出す
+      var slowTimer = setTimeout(function () {
+        setMessage('通信に時間がかかっています。もうしばらくお待ちください。', 'info');
+      }, 5000);
 
       google.script.run
         .withSuccessHandler(function (res) {
-          btn.disabled = false;
+          clearTimeout(slowTimer);
+          setButtonLoading(btn, false);
           if (res.status === 'OK') {
             saveSession({ token: res.data.token, email: res.data.email, isAdmin: res.data.isAdmin });
             window.top.location.href = scriptUrl + '?page=GF01';
@@ -55,7 +61,8 @@
           }
         })
         .withFailureHandler(function () {
-          btn.disabled = false;
+          clearTimeout(slowTimer);
+          setButtonLoading(btn, false);
           setMessage('通信に失敗しました。ネットワークをご確認のうえ再度お試しください。', 'error');
         })
         .login({ email: email });

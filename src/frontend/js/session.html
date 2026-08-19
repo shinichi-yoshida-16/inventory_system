@@ -29,4 +29,23 @@
     }
     return session;
   }
+
+  // ボタン操作の応答有無が分かるよう、通信中はボタンをスピナー付きの無効表示に切り替える。
+  // isLoading=falseで元のラベルへ戻す(2重呼び出し対策でoriginalHtmlは初回のみ保存)。
+  function setButtonLoading(btn, isLoading, loadingLabel) {
+    if (!btn) return;
+    if (isLoading) {
+      if (btn.dataset.originalHtml === undefined) {
+        btn.dataset.originalHtml = btn.innerHTML;
+      }
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>' + (loadingLabel || '処理中…');
+    } else {
+      btn.disabled = false;
+      if (btn.dataset.originalHtml !== undefined) {
+        btn.innerHTML = btn.dataset.originalHtml;
+        delete btn.dataset.originalHtml;
+      }
+    }
+  }
 </script>
