@@ -18,18 +18,35 @@
   <script>
     var scriptUrl = <?!= JSON.stringify(scriptUrl) ?>;
 
-    // 既にセッションが有効ならダッシュボードへ
-    (function () {
-      var session = getSession();
-      if (session && session.token) {
-        window.top.location.href = scriptUrl + '?page=GF01';
-      }
-    })();
-
     function setMessage(text, type) {
       var msg = document.getElementById('message');
       msg.className = 'message' + (type ? ' ' + type : '');
       msg.textContent = text;
+    }
+
+    // プライベートブラウズモードやアプリ内ブラウザ等でsessionStorageがブロックされていると、
+    // ログイン自体はGAS側で成功してもトークンを保存できず、ログイン画面に無反応のまま
+    // 留まってしまう(エラー表示もされない)。事前に検知し、原因が分かるよう案内する。
+    var storageAvailable = isSessionStorageAvailable_();
+    if (!storageAvailable) {
+      setMessage(
+        'このブラウザではログイン状態を保持できない可能性があります(プライベートブラウズモードや' +
+          'アプリ内ブラウザ等が原因として考えられます)。ログインが完了しない場合は、通常のブラウザ' +
+          '(Safari/Chrome等)の通常モードで開き直してください。',
+        'info'
+      );
+    }
+
+    // 既にセッションが有効ならダッシュボードへ
+    if (storageAvailable) {
+      try {
+        var session = getSession();
+        if (session && session.token) {
+          window.top.location.href = scriptUrl + '?page=GF01';
+        }
+      } catch (e) {
+        // 読み取りにも失敗する場合は上の警告表示に任せ、このページに留まる
+      }
     }
 
     function doLogin() {
@@ -54,8 +71,16 @@
           clearTimeout(slowTimer);
           setButtonLoading(btn, false);
           if (res.status === 'OK') {
-            saveSession({ token: res.data.token, email: res.data.email, isAdmin: res.data.isAdmin });
-            window.top.location.href = scriptUrl + '?page=GF01';
+            try {
+              saveSession({ token: res.data.token, email: res.data.email, isAdmin: res.data.isAdmin });
+              window.top.location.href = scriptUrl + '?page=GF01';
+            } catch (e) {
+              setMessage(
+                'ログインには成功しましたが、ブラウザの設定によりログイン状態を保存できませんでした。' +
+                  'プライベートブラウズモードを解除するか、通常のブラウザで開き直してお試しください。',
+                'error'
+              );
+            }
           } else {
             setMessage(res.message, 'error');
           }

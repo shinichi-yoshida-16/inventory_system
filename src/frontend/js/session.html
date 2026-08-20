@@ -20,6 +20,19 @@
     sessionStorage.removeItem(SESSION_KEY_);
   }
 
+  // sessionStorageへの読み書きが可能かを確認する。プライベートブラウズモードや
+  // アプリ内ブラウザ等でストレージがブロックされていると、setItem/getItemが例外を投げることがある。
+  function isSessionStorageAvailable_() {
+    try {
+      var testKey = '__inv_storage_test__';
+      sessionStorage.setItem(testKey, '1');
+      sessionStorage.removeItem(testKey);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // 未ログインならログイン画面へ遷移し、nullを返す
   function requireSession(loginUrl) {
     var session = getSession();
