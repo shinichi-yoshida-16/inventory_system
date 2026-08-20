@@ -1,0 +1,8 @@
+# clasp push/deploy の対象を明示的に絞り込む(除外ではなく許可リスト方式)。
+# rootDir(src/)からの相対パスで判定される。
+# src/external/gf03-scan(GitHub Pagesへ別途自動デプロイされる別ドメインの画面)は
+# GASプロジェクトの対象外のため、ここで何もunignoreせず除外したままにする。
+**/**
+!appsscript.json
+!core/**/*.gs
+!frontend/**/*.html

@@ -1,0 +1,8 @@
+{
+  "name": "inventory-system-gas-tooling",
+  "private": true,
+  "description": "GAS本体(src/core, src/frontend)へのclasp push/deploy用の開発ツール依存関係のみ。アプリ本体はビルド不要。",
+  "devDependencies": {
+    "@google/clasp": "^3.3.0"
+  }
+}

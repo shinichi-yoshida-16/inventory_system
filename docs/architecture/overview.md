@@ -299,3 +299,25 @@ FE-08の警告表示は「気づける」ようにする対応であり、スト
 | Cookieベースのセッション | GASドメインのCookieでセッション保持 | 却下。検証結果3で既に「iframe構成のためCookieでのセッション保持がしにくい」ことを検証済みであり、再検証の価値は低い |
 
 - 現時点の方針：発生頻度・影響範囲を見て要否を判断する。まずはFE-08の警告表示で運用回避(通常ブラウザでの利用を促す)を優先し、URLパラメータ方式への拡張は影響範囲が大きいため、同様の事例が複数件確認された場合に着手を検討する
+
+## 9. GAS本体のデプロイ手順(clasp、導入中)
+### 9.1 背景
+- GAS本体(src/core, src/frontend)は、これまでGASエディタへの手動コピー&ペーストで反映していた
+- 2026-08-20、この手動反映において「session.htmlの一部ファイルだけ更新し忘れる」という反映漏れが発生し、`GF00_login.html`が参照する関数(`isSessionStorageAvailable_`)が未定義エラーになる不具合が発生した(ブラウザコンソールで`ReferenceError`を確認)
+- GF-03(外部ホスティング)は既に`.github/workflows/deploy-gf03-scan.yml`で自動デプロイされているが、GAS本体側には同様の仕組みがなく、手動反映のヒューマンエラーに起因する不具合が再発するリスクがあるため、まずはローカル環境からの`clasp`利用に切り替えることとした(GitHub Actionsでの完全自動化は、Google認証情報をCI上で管理する必要がありコストが高いため、現時点では見送り、8.2節の考え方と同様に必要性が高まった際に再検討する)
+
+### 9.2 リポジトリ側の設定(設定済み)
+- ルート直下に`.clasp.json`(rootDir: "src"。scriptIdは各自のApps ScriptプロジェクトIDを設定する。値は個人の環境に紐づくためリポジトリには実IDを記載しない)
+- ルート直下に`.claspignore`(許可リスト方式。`src/appsscript.json`・`src/core/**/*.gs`・`src/frontend/**/*.html`のみを対象とし、`src/external/gf03-scan`(GF-03、GitHub Pagesへ別途自動デプロイされる別ドメインの画面)はGASプロジェクトの対象外として明示的に除外している)
+- `package.json`(devDependenciesに`@google/clasp`。`npx clasp <command>`で利用可能。node_modules/はコミットしない)
+
+### 9.3 各自が行う必要がある手順(未実施)
+1. `npm install`(初回のみ、@google/claspをローカルに取得)
+2. `npx clasp login`でGoogleアカウント認証(ブラウザでのOAuth同意が必要なため、対話的に実行できる環境で各自1回実施する)
+3. 対象のApps Scriptプロジェクトのスクリプト ID を確認し(プロジェクトの設定(歯車アイコン)→「ID」欄、またはscript.google.com/d/<ID>/editのURLから取得)、`.clasp.json`の`scriptId`に設定する
+4. `npx clasp status`で、push対象ファイルが意図通り(core/**/*.gs, frontend/**/*.html, appsscript.jsonのみ。external配下が含まれていないこと)か確認する
+5. 問題なければ`npx clasp push`でコード反映、`npx clasp deploy`で新バージョンとしてデプロイする(deploy対象の既存デプロイIDを指定する場合は`npx clasp deployments`で確認)
+
+### 9.4 運用上の注意点
+- `clasp push`はコードの反映のみで、本番URL(/exec)には自動反映されない。必ず`clasp deploy`(新バージョンデプロイ)まで実施すること(この点は手動コピペ運用時の「保存しただけでは反映されない」という注意点と同じ)
+- `.clasp.json`の`scriptId`は各自の認証済みGoogleアカウントに紐づくApps Scriptプロジェクトを指す。誤って別プロジェクトのIDを設定した状態で`push`すると、意図しないプロジェクトを上書きするため、初回設定時は`clasp status`での確認を必ず行う
